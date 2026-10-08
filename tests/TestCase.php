@@ -62,10 +62,16 @@ abstract class TestCase extends Orchestra
         $app['config']->set('app.key', 'base64:'.base64_encode(str_repeat('a', 32)));
         $app['config']->set('database.default', 'testing');
         $app['config']->set('auth.providers.users.model', User::class);
+        $app['config']->set('mail.default', 'array');
+        $app['config']->set('mail.mailers.array', ['transport' => 'array']);
+        $app['config']->set('queue.connections.fake', ['driver' => 'database']);
     }
 
     protected function defineDatabaseMigrations(): void
     {
         $this->loadMigrationsFrom(__DIR__.'/../workbench/database/migrations');
+
+        // The plugin's migration is a publishable stub: run it the way a host that published it would.
+        (include __DIR__.'/../database/migrations/create_mail_logs_table.php.stub')->up();
     }
 }

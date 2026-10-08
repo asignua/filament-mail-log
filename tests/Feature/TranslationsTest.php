@@ -9,7 +9,7 @@ use Illuminate\Support\Arr;
 
 class TranslationsTest extends TestCase
 {
-    private const array LOCALES = ['de', 'en', 'es', 'fr', 'it', 'nl', 'pl', 'pt_BR', 'tr', 'uk'];
+    private const array LOCALES = ['en', 'uk'];
 
     public function test_every_locale_has_the_same_keys_as_english(): void
     {

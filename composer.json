@@ -1,7 +1,7 @@
 {
     "name": "asignua/filament-mail-log",
-    "description": "TODO: one-sentence description of Mail Log for Filament.",
-    "keywords": ["filament", "filament-plugin", "laravel"],
+    "description": "Read-only log of every outgoing Laravel mail for Filament 5: status tracking across the queue, secrets redacted before storing, sandboxed preview.",
+    "keywords": ["filament", "filament-plugin", "laravel", "mail", "mail-log", "email-log", "audit"],
     "homepage": "https://github.com/asignua/filament-mail-log",
     "support": {
         "issues": "https://github.com/asignua/filament-mail-log/issues",
