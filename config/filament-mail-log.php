@@ -16,6 +16,14 @@ return [
     'table' => env('MAIL_LOG_TABLE', 'mail_logs'),
 
     /*
+     * With `connection` = null, write the log on a separate connection that clones the default one. A mail
+     * sent inside a DB transaction that later rolls back then keeps its audit row. The cost: the rows are
+     * committed at once, so a test that wraps everything in a transaction does not roll them back. Set to
+     * false to write on the default connection (in-memory SQLite always does).
+     */
+    'isolate_connection' => env('MAIL_LOG_ISOLATE_CONNECTION', true),
+
+    /*
      * Days a record is kept by `mail-log:prune`. 0 or less disables the rotation.
      */
     'retention_days' => (int) env('MAIL_LOG_RETENTION_DAYS', 90),
@@ -116,9 +124,14 @@ return [
         /*
          * Content-Security-Policy of the sandboxed iframe that shows a message. The iframe has no
          * `allow-scripts`, so it can not run code anyway; this also blocks remote fonts, frames and
-         * forms. Images over https stay allowed, a mail without its logo is hard to read.
-         * Set to null to send no policy.
+         * forms. Remote images are blocked by default: opening a stored message must not fire the
+         * open-tracking pixels of the mail or leak the admin's IP. Set to null to send no policy.
          */
-        'csp' => "default-src 'none'; img-src data: https:; style-src 'unsafe-inline'; font-src data:",
+        'csp' => "default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:",
+
+        /*
+         * The policy used after the viewer pressed "Load remote images" on the message page.
+         */
+        'csp_remote_images' => "default-src 'none'; img-src data: https:; style-src 'unsafe-inline'; font-src data:",
     ],
 ];

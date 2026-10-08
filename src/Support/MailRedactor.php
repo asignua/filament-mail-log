@@ -67,8 +67,14 @@ final class MailRedactor
         if ($parameters !== []) {
             // The lookbehind accepts `;` so that the `&amp;` separator of HTML bodies works too.
             $rules[] = [
-                '~(?<=[?&;])('.self::alternation($parameters).')=[^&\s"\'<>#]*~i',
+                '~(?<=[?&;#])('.self::alternation($parameters).')=[^&\s"\'<>#]*~i',
                 '$1='.self::PLACEHOLDER,
+            ];
+
+            // The same parameter inside a percent-encoded URL (`?redirect=https%3A%2F%2F…%3Fsignature%3D…`).
+            $rules[] = [
+                '~(?<=%3F|%26|%23)('.self::alternation($parameters).')%3D[^&\s"\'<>%]*~i',
+                '$1%3D'.self::PLACEHOLDER,
             ];
         }
 
@@ -84,8 +90,11 @@ final class MailRedactor
         $labels = self::strings(config('filament-mail-log.redaction.credential_labels'));
 
         if ($labels !== []) {
+            // HTML whitespace entities count as spaces. The value runs to the end of the line or the next tag:
+            // a generated password may hold any punctuation, and over-redacting is fine for an audit log.
+            $space = '(?:\s|&nbsp;|&\#160;|&\#xa0;)';
             $rules[] = [
-                '~\b('.self::alternation($labels).')(\s*[:=]\s*(?:<[^>]{0,200}>\s*)*)(?!\[REDACTED\])[^\s<"\',;]+~i',
+                '~\b('.self::alternation($labels).')('.$space.'*[:=](?:'.$space.'|<[^>]{0,200}>)*)(?!\[REDACTED\])[^\r\n<]+~i',
                 '$1$2'.self::PLACEHOLDER,
             ];
         }

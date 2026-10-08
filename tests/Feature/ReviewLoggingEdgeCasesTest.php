@@ -9,6 +9,7 @@ use Asignua\FilamentMailLog\Filament\Resources\MailLogs\Pages\ListMailLogs;
 use Asignua\FilamentMailLog\Filament\Resources\MailLogs\Pages\ViewMailLog;
 use Asignua\FilamentMailLog\Listeners\LogOutgoingMail;
 use Asignua\FilamentMailLog\Models\MailLog;
+use Asignua\FilamentMailLog\Support\LogConnection;
 use Asignua\FilamentMailLog\Support\MailLogContext;
 use Asignua\FilamentMailLog\Tests\Fixtures\FailingTransport;
 use Asignua\FilamentMailLog\Tests\Fixtures\WelcomeMail;
@@ -184,12 +185,65 @@ class ReviewLoggingEdgeCasesTest extends TestCase
         // The log writes on the default connection inside the caller's transaction. The mail is already gone when
         // the transaction rolls back, but its audit row disappears with it. Fix: write on a dedicated connection
         // (or document that `connection` must be separate for a reliable audit trail).
+        // The suite runs on in-memory SQLite, which can not be cloned into a second connection, so the log is
+        // pointed at a separate file database the way `LogConnection` does it for a real default connection.
+        $file = tempnam(sys_get_temp_dir(), 'maillog');
+        config()->set('database.connections.audit', ['driver' => 'sqlite', 'database' => $file, 'prefix' => '', 'foreign_key_constraints' => false]);
+        config()->set('filament-mail-log.connection', 'audit');
+        (include __DIR__.'/../../database/migrations/create_mail_logs_table.php.stub')->up();
+
         DB::beginTransaction();
         Mail::to('ann@example.test')->send(new WelcomeMail);
         DB::rollBack();
 
         $this->assertCount(1, Mail::mailer('array')->getSymfonyTransport()->messages());
         $this->assertSame(1, MailLog::query()->count());
+
+        DB::purge('audit');
+        @unlink($file);
+    }
+
+    public function test_the_log_clones_a_file_based_default_connection_and_keeps_in_memory_sqlite(): void
+    {
+        $this->assertNull(LogConnection::name());
+
+        config()->set('database.connections.testing', ['driver' => 'sqlite', 'database' => '/tmp/some.sqlite', 'prefix' => '']);
+
+        $this->assertSame(LogConnection::NAME, LogConnection::name());
+        $this->assertSame('/tmp/some.sqlite', config('database.connections.'.LogConnection::NAME.'.database'));
+
+        config()->set('filament-mail-log.isolate_connection', false);
+        $this->assertNull(LogConnection::name());
+    }
+
+    public function test_a_final_failure_closes_the_queued_row_but_a_retryable_one_does_not(): void
+    {
+        $mailable = (new WelcomeMail)->to('ann@example.test');
+        event(new JobQueued('fake', 'default', '700', new SendQueuedMailable($mailable), '{}', null));
+
+        $job = Mockery::mock(Job::class)->shouldIgnoreMissing([]);
+        $job->shouldReceive('getJobId')->andReturn('700');
+        $job->shouldReceive('hasFailed')->andReturn(true);
+
+        event(new JobExceptionOccurred('fake', $job, new RuntimeException('boom')));
+
+        $this->assertSame(MailStatus::Failed, MailLog::query()->sole()->status);
+    }
+
+    public function test_a_stream_attachment_is_not_consumed_while_measuring(): void
+    {
+        $stream = fopen('php://memory', 'r+');
+        fwrite($stream, 'stream body');
+        rewind($stream);
+
+        $email = (new \Symfony\Component\Mime\Email)
+            ->from('a@example.test')->to('b@example.test')->subject('s')->text('t')
+            ->addPart(new \Symfony\Component\Mime\Part\DataPart($stream, 'a.txt', 'text/plain'));
+
+        Event::dispatch(new MessageSending($email));
+
+        $this->assertSame('stream body', stream_get_contents($stream));
+        $this->assertNull(MailLog::query()->sole()->attachments[0]['size']);
     }
 
     public function test_a_message_cancelled_by_another_listener_is_reported_as_a_transport_failure(): void

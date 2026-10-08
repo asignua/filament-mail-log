@@ -79,12 +79,22 @@ class ReviewRedactorEdgeCasesTest extends TestCase
         $this->assertStringNotContainsString('FRAGTOKEN', $out);
     }
 
-    public function test_safe_frame_puts_the_csp_before_the_doctype_which_switches_the_preview_to_quirks_mode(): void
+    public function test_safe_frame_keeps_the_doctype_first_so_the_preview_is_not_in_quirks_mode(): void
     {
-        // Documented behaviour, low severity: a `<meta>` before `<!DOCTYPE html>` makes the parser ignore the doctype,
-        // so the preview renders in quirks mode (tables / box sizing differ from what a mail client shows).
         $doc = SafeFrame::document('<!DOCTYPE html><html><head></head><body>x</body></html>');
 
-        $this->assertStringStartsWith('<meta http-equiv="Content-Security-Policy"', $doc);
+        $this->assertStringStartsWith('<!DOCTYPE html>', $doc);
+        $this->assertStringContainsString('<head><meta http-equiv="Content-Security-Policy"', $doc);
+
+        $bare = SafeFrame::document('<!DOCTYPE html><p>x</p>');
+        $this->assertStringStartsWith('<!DOCTYPE html><meta http-equiv="Content-Security-Policy"', $bare);
+
+        $this->assertStringStartsWith('<meta http-equiv=', SafeFrame::document('<header>x</header>'));
+    }
+
+    public function test_safe_frame_allows_remote_images_only_on_request(): void
+    {
+        $this->assertStringNotContainsString('https:', SafeFrame::document('<p>x</p>'));
+        $this->assertStringContainsString('img-src data: https:', SafeFrame::document('<p>x</p>', true));
     }
 }

@@ -26,10 +26,11 @@ class MailLogRepository
         return MailLog::query();
     }
 
-    public function findQueuedByJob(string $jobId): ?MailLog
+    public function findQueuedByJob(string $jobId, ?string $connection): ?MailLog
     {
         return $this->query()
             ->where('job_id', $jobId)
+            ->where('queue_connection', $connection)
             ->where('status', MailStatus::Queued->value)
             ->latest('id')
             ->first();
@@ -61,9 +62,12 @@ class MailLogRepository
     /**
      * A job that died before it reached the mailer leaves its `queued` row behind.
      */
-    public function markFailedIfQueued(string $jobId, string $error): int
+    public function markFailedIfQueued(string $jobId, ?string $connection, string $error): int
     {
-        return $this->fail($this->query()->where('job_id', $jobId)->where('status', MailStatus::Queued->value), $error);
+        return $this->fail(
+            $this->query()->where('job_id', $jobId)->where('queue_connection', $connection)->where('status', MailStatus::Queued->value),
+            $error,
+        );
     }
 
     /**
@@ -73,7 +77,7 @@ class MailLogRepository
     {
         return $this->fail(
             $this->query()->where('status', MailStatus::Sending->value)->where('updated_at', '<', $before),
-            'No delivery confirmation: the sending process ended before the transport answered.',
+            'No delivery confirmation: the message was cancelled by a listener, or the sending process ended before the transport answered.',
         );
     }
 

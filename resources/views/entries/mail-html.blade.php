@@ -1,7 +1,7 @@
 @php($record = $getRecord())
 
 @if (filled($record->html_body))
-    <x-filament-mail-log::mail-frame :html="$record->html_body" :title="__('filament-mail-log::filament-mail-log.tabs.html')" />
+    <x-filament-mail-log::mail-frame :remote-images="(bool) ($getLivewire()->remoteImages ?? false)" :html="$record->html_body" :title="__('filament-mail-log::filament-mail-log.tabs.html')" />
 @elseif (filled($record->text_body))
     <pre class="overflow-x-auto whitespace-pre-wrap rounded-xl bg-gray-50 p-3 text-sm dark:bg-white/5">{{ $record->text_body }}</pre>
 @else

@@ -108,7 +108,9 @@ Everything else is in the config (`php artisan vendor:publish --tag=filament-mai
 | `attachments.sizes` | `true` | store attachment sizes (reads the attachment once more) |
 | `redaction.*` | see below | what is removed from stored text |
 | `types` | `[]` | `[WelcomeMail::class => 'Welcome mail']` labels; subclasses inherit |
-| `preview.csp` | restrictive | Content-Security-Policy inside the preview iframe |
+| `preview.csp` | restrictive | Content-Security-Policy inside the preview iframe (no remote images) |
+| `preview.csp_remote_images` | allows `https:` images | policy after "Load remote images" |
+| `isolate_connection` | `true` | write the log on a separate connection (see Gotchas) |
 
 ### Redaction
 
@@ -136,7 +138,12 @@ with `[redaction failed]`. Add the parameters of your own signed links to the li
   clones the message). It is a random ULID and carries nothing; rename it with the `header` config.
 - **Stored mail is still personal data.** Redaction removes secrets, not names or order contents. Use
   `body.store=false` or a short `retention_days` where that matters.
-- **The preview shows no images.** The iframe policy allows `https:` and `data:` images only; adjust `preview.csp`.
+- **Mail sent inside a DB transaction keeps its log row.** With `connection` = null the log is written on a separate connection that clones the default one (`isolate_connection`), so a rollback does not erase the record of a mail that already left. In-memory SQLite stays on the default connection. Side effect: a host test wrapped in a transaction does not roll the log rows back.
+- **A message cancelled by another `MessageSending` listener** (one that returns `false`) is logged as failed with the text "cancelled by a listener, the transport threw an exception, or the process ended", because the log row is written before the other listeners run.
+- **Supported databases:** MySQL / MariaDB, PostgreSQL and SQLite (recipient and body searches use `LIKE ... ESCAPE`, JSON columns are cast to text on PostgreSQL).
+- **Queue correlation** uses the queue connection together with the job id; a job that finishes without sending closes its `queued` row as failed, and a job that will be retried keeps it for the next attempt.
+- **Attachment sizes** are read only from string and file bodies; a stream attachment is never read (that would consume it), so its size stays empty.
+- **The preview blocks remote images.** Opening a message must not fire its open-tracking pixels (that would mark it as opened and leak the admin's IP), so the policy allows `data:` images only. The "Load remote images" button on the message page switches to `preview.csp_remote_images` for that view.
 - **Search finds nothing in the body.** The body is a long text column, so it has its own filter (not the global
   search); it uses `LIKE`, there is no full-text index.
 

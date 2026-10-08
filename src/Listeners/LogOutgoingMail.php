@@ -22,8 +22,12 @@ use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Queue\Events\JobQueued;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use ReflectionProperty;
 use Symfony\Component\Mime\Address;
 use Symfony\Component\Mime\Email;
+use Symfony\Component\Mime\Part\DataPart;
+use Symfony\Component\Mime\Part\File;
+use Symfony\Component\Mime\Part\TextPart;
 use Throwable;
 
 /**
@@ -37,6 +41,8 @@ use Throwable;
  */
 final class LogOutgoingMail
 {
+    private const string UNCONFIRMED = 'Delivery was not confirmed: the message was cancelled by a listener, the transport threw an exception, or the process ended before it answered.';
+
     public function __construct(private readonly MailLogRepository $repository) {}
 
     public function queued(JobQueued $event): void
@@ -62,6 +68,7 @@ final class LogOutgoingMail
             $log = new MailLog;
             $log->ulid = (string) Str::ulid();
             $log->job_id = (string) $event->id;
+            $log->queue_connection = $event->connectionName;
             $log->status = MailStatus::Queued;
             $log->queued_at = now();
             $log->type = $row['type'];
@@ -86,7 +93,7 @@ final class LogOutgoingMail
             $jobId = MailLogContext::jobId();
 
             // A queued message already has its row: the worker continues it instead of adding a second one.
-            $log = $jobId !== null ? $this->repository->findQueuedByJob($jobId) : null;
+            $log = $jobId !== null ? $this->repository->findQueuedByJob($jobId, MailLogContext::connection()) : null;
             $log ??= new MailLog;
 
             // A fresh model has no ulid yet; a continued `queued` row keeps the one it was born with.
@@ -98,6 +105,7 @@ final class LogOutgoingMail
             $type = $data['__laravel_notification'] ?? $data['__laravel_mailable'] ?? $log->type;
 
             $log->job_id = $jobId;
+            $log->queue_connection = $jobId === null ? null : MailLogContext::connection();
             $log->status = MailStatus::Sending;
             $log->type = is_string($type) ? $type : null;
             $log->mailer = is_string($data['mailer'] ?? null) ? $data['mailer'] : (string) config('mail.default');
@@ -170,7 +178,10 @@ final class LogOutgoingMail
     {
         try {
             $id = $event->job->getJobId();
-            MailLogContext::startJob($id === '' ? null : (string) $id);
+            $sync = $event->connectionName === 'sync' || config('queue.connections.'.$event->connectionName.'.driver') === 'sync';
+
+            // A sync job runs inside the request / job that dispatched it: keep that frame for later.
+            MailLogContext::startJob($id === '' ? null : (string) $id, $event->connectionName, $sync);
         } catch (Throwable $e) {
             $this->warn('job start', $e);
         }
@@ -178,7 +189,18 @@ final class LogOutgoingMail
 
     public function jobProcessed(JobProcessed $event): void
     {
-        MailLogContext::endJob();
+        try {
+            // The job caught the transport exception itself, so no exception event fired: whatever is still
+            // "sending" never got an answer.
+            $this->repository->markFailedIfSending(MailLogContext::flush(), self::UNCONFIRMED);
+
+            // A job that returned without sending (notification vetoed, model deleted) leaves its `queued` row.
+            $this->failQueued($event->job->getJobId(), $event->connectionName, 'The queued job finished without sending the message.');
+        } catch (Throwable $e) {
+            $this->warn('job processed', $e);
+        } finally {
+            MailLogContext::endJob();
+        }
     }
 
     public function jobExceptionOccurred(JobExceptionOccurred $event): void
@@ -186,7 +208,12 @@ final class LogOutgoingMail
         try {
             $error = Str::limit($event->exception->getMessage(), 1000);
             $this->repository->markFailedIfSending(MailLogContext::flush(), $error);
-            $this->failQueued($event->job->getJobId(), $error);
+
+            // A job that will be retried keeps its `queued` row for the next attempt (same job id on redis /
+            // SQS); only the final failure (JobFailed, or already failed here) closes it.
+            if ($event->job->hasFailed()) {
+                $this->failQueued($event->job->getJobId(), $event->connectionName, $error);
+            }
         } catch (Throwable $e) {
             $this->warn('job exception', $e);
         } finally {
@@ -197,7 +224,7 @@ final class LogOutgoingMail
     public function jobFailed(JobFailed $event): void
     {
         try {
-            $this->failQueued($event->job->getJobId(), Str::limit($event->exception->getMessage(), 1000));
+            $this->failQueued($event->job->getJobId(), $event->connectionName, Str::limit($event->exception->getMessage(), 1000));
         } catch (Throwable $e) {
             $this->warn('job failed', $e);
         }
@@ -212,7 +239,7 @@ final class LogOutgoingMail
         try {
             $this->repository->markFailedIfSending(
                 MailLogContext::flush(),
-                'Delivery was not confirmed: the transport threw an exception or the process ended before it answered.',
+                self::UNCONFIRMED,
             );
         } catch (Throwable $e) {
             $this->warn('terminate', $e);
@@ -231,10 +258,10 @@ final class LogOutgoingMail
         }
     }
 
-    private function failQueued(string|int|null $jobId, string $error): void
+    private function failQueued(string|int|null $jobId, ?string $connection, string $error): void
     {
         if ($jobId !== null && $jobId !== '') {
-            $this->repository->markFailedIfQueued((string) $jobId, $error);
+            $this->repository->markFailedIfQueued((string) $jobId, $connection, $error);
         }
     }
 
@@ -321,11 +348,7 @@ final class LogOutgoingMail
             $size = null;
 
             if ($withSizes) {
-                try {
-                    $size = strlen($part->getBody());
-                } catch (Throwable) {
-                    $size = null;
-                }
+                $size = $this->attachmentSize($part);
             }
 
             $rows[] = [
@@ -336,6 +359,25 @@ final class LogOutgoingMail
         }
 
         return $rows === [] ? null : $rows;
+    }
+
+    /**
+     * Never calls getBody(): for a stream resource it reads the stream to the end and the transport would
+     * then send an empty attachment. Strings and files are measured without touching a cursor.
+     */
+    private function attachmentSize(DataPart $part): ?int
+    {
+        try {
+            $body = (new ReflectionProperty(TextPart::class, 'body'))->getValue($part);
+
+            if (is_string($body)) {
+                return strlen($body);
+            }
+
+            return $body instanceof File ? $body->getSize() : null;
+        } catch (Throwable) {
+            return null;
+        }
     }
 
     private function format(?Address $address): ?string

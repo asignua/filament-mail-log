@@ -8,9 +8,9 @@ namespace Asignua\FilamentMailLog\Support;
  * Per-process registry of the messages "in flight" (MessageSending seen, MessageSent not yet) and of the
  * queue job being processed.
  *
- * A worker handles one job at a time, so the static state maps to exactly one attempt; JobProcessing
- * resets it before every job. The state is cleared on every exit path, so a long-lived process (queue
- * worker, Octane) never carries a message from one job or request into the next.
+ * A worker handles one job at a time, but the `sync` driver runs a job INSIDE a request or another job, so
+ * the state is a stack: JobProcessing pushes the outer frame away, JobProcessed / JobExceptionOccurred
+ * bring it back. A real queue worker starts from a clean slate (nothing can be outside it).
  */
 final class MailLogContext
 {
@@ -18,6 +18,11 @@ final class MailLogContext
     private static array $inFlight = [];
 
     private static ?string $jobId = null;
+
+    private static ?string $connection = null;
+
+    /** @var list<array{inFlight: list<string>, jobId: ?string, connection: ?string}> */
+    private static array $stack = [];
 
     public static function push(string $ulid): void
     {
@@ -57,16 +62,29 @@ final class MailLogContext
         return $ulids;
     }
 
-    public static function startJob(?string $jobId): void
+    public static function startJob(?string $jobId, ?string $connection = null, bool $nested = false): void
     {
+        if ($nested) {
+            self::$stack[] = ['inFlight' => self::$inFlight, 'jobId' => self::$jobId, 'connection' => self::$connection];
+        } else {
+            self::$stack = [];
+        }
+
         self::$inFlight = [];
         self::$jobId = $jobId;
+        self::$connection = $connection;
     }
 
+    /**
+     * Leaves the current job and restores the frame it was started in (empty for a queue worker).
+     */
     public static function endJob(): void
     {
-        self::$inFlight = [];
-        self::$jobId = null;
+        $frame = array_pop(self::$stack);
+
+        self::$inFlight = $frame['inFlight'] ?? [];
+        self::$jobId = $frame['jobId'] ?? null;
+        self::$connection = $frame['connection'] ?? null;
     }
 
     public static function jobId(): ?string
@@ -74,8 +92,16 @@ final class MailLogContext
         return self::$jobId;
     }
 
+    public static function connection(): ?string
+    {
+        return self::$connection;
+    }
+
     public static function reset(): void
     {
-        self::endJob();
+        self::$inFlight = [];
+        self::$jobId = null;
+        self::$connection = null;
+        self::$stack = [];
     }
 }

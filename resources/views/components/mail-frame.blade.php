@@ -1,4 +1,4 @@
-@props(['html', 'title' => '', 'height' => '65vh'])
+@props(['html', 'title' => '', 'height' => '65vh', 'remoteImages' => false])
 
 {{--
     A mail body is untrusted (it can carry text typed by an anonymous visitor), so it never goes into the
@@ -7,7 +7,7 @@
 --}}
 <iframe
     title="{{ $title }}"
-    srcdoc="{{ \Asignua\FilamentMailLog\Support\SafeFrame::document($html) }}"
+    srcdoc="{{ \Asignua\FilamentMailLog\Support\SafeFrame::document($html, (bool) $remoteImages) }}"
     sandbox=""
     referrerpolicy="no-referrer"
     loading="lazy"

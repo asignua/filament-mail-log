@@ -47,6 +47,10 @@ return [
         'error' => 'Error',
         'attachments' => 'Attachments',
     ],
+    'actions' => [
+        'load_images' => 'Load remote images',
+        'block_images' => 'Block remote images',
+    ],
     'notices' => [
         'redacted' => 'Signed links, tokens and passwords were removed from the stored copy.',
         'truncated' => 'The stored body was cut at the configured size limit.',

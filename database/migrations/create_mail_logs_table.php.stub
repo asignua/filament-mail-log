@@ -28,6 +28,8 @@ return new class extends Migration
             $table->ulid('ulid')->unique();
             // The queue job that sends the message; ties the `queued` row to the worker's attempt.
             $table->string('job_id')->nullable()->index();
+            // Queue connection of that job: job ids are per-connection (per-table) counters and collide otherwise.
+            $table->string('queue_connection')->nullable();
             $table->string('message_id')->nullable()->index();
             $table->string('mailer')->nullable();
             // Mailable / notification class.

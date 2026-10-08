@@ -6,6 +6,7 @@ namespace Asignua\FilamentMailLog\Models;
 
 use Asignua\FilamentMailLog\Casts\UnescapedJson;
 use Asignua\FilamentMailLog\Enums\MailStatus;
+use Asignua\FilamentMailLog\Support\LogConnection;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -14,6 +15,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property int $id
  * @property string $ulid
  * @property string|null $job_id
+ * @property string|null $queue_connection
  * @property string|null $message_id
  * @property string|null $mailer
  * @property string|null $type
@@ -47,9 +49,7 @@ class MailLog extends Model
 
     public function getConnectionName(): ?string
     {
-        $connection = config('filament-mail-log.connection');
-
-        return is_string($connection) && $connection !== '' ? $connection : null;
+        return LogConnection::name();
     }
 
     protected function casts(): array

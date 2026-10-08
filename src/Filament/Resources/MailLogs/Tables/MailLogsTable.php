@@ -41,9 +41,7 @@ class MailLogsTable
                 TextColumn::make('recipient')
                     ->label($t('columns.recipient'))
                     ->searchable(query: fn (Builder $query, string $search): Builder => $query->where(
-                        fn (Builder $inner): Builder => $inner
-                            ->where('recipient', 'like', self::contains($search))
-                            ->orWhere('recipients', 'like', self::contains($search)),
+                        fn (Builder $inner): Builder => self::likeAny($inner, ['recipient', 'recipients'], $search),
                     )),
 
                 TextColumn::make('subject')
@@ -82,9 +80,7 @@ class MailLogsTable
                     ->query(fn (Builder $query, array $data): Builder => $query->when(
                         is_string($data['recipient'] ?? null) && $data['recipient'] !== '',
                         fn (Builder $q): Builder => $q->where(
-                            fn (Builder $inner): Builder => $inner
-                                ->where('recipient', 'like', self::contains((string) $data['recipient']))
-                                ->orWhere('recipients', 'like', self::contains((string) $data['recipient'])),
+                            fn (Builder $inner): Builder => self::likeAny($inner, ['recipient', 'recipients'], (string) $data['recipient']),
                         ),
                     )),
 
@@ -95,9 +91,7 @@ class MailLogsTable
                     ->query(fn (Builder $query, array $data): Builder => $query->when(
                         is_string($data['body'] ?? null) && $data['body'] !== '',
                         fn (Builder $q): Builder => $q->where(
-                            fn (Builder $inner): Builder => $inner
-                                ->where('html_body', 'like', self::contains((string) $data['body']))
-                                ->orWhere('text_body', 'like', self::contains((string) $data['body'])),
+                            fn (Builder $inner): Builder => self::likeAny($inner, ['html_body', 'text_body'], (string) $data['body']),
                         ),
                     )),
 
@@ -139,9 +133,30 @@ class MailLogsTable
         return $options;
     }
 
-    private static function contains(string $needle): string
+    /**
+     * `column LIKE %needle%` OR-ed over the columns. The wildcard characters of the needle are escaped with
+     * an explicit ESCAPE clause (SQLite has no default escape character); a JSON column is cast to text
+     * on PostgreSQL, where `json LIKE` does not exist.
+     *
+     * @param Builder<MailLog> $query
+     * @param list<string>     $columns
+     *
+     * @return Builder<MailLog>
+     */
+    private static function likeAny(Builder $query, array $columns, string $needle): Builder
     {
-        return '%'.addcslashes($needle, '%_\\').'%';
+        $pattern = '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $needle).'%';
+        $pgsql = $query->getModel()->getConnection()->getDriverName() === 'pgsql';
+
+        foreach ($columns as $column) {
+            $wrapped = $query->getGrammar()->wrap($column);
+            $sql = $pgsql ? $wrapped.'::text ILIKE ? ESCAPE \'!\'' : $wrapped.' LIKE ? ESCAPE \'!\'';
+
+            // @phpstan-ignore argument.type (the column name is wrapped by the grammar, the needle is a binding)
+            $query->orWhereRaw($sql, [$pattern]);
+        }
+
+        return $query;
     }
 
     private static function boundary(mixed $date, bool $end): Carbon
