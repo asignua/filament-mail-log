@@ -85,7 +85,9 @@ class VerifierThrowOnceNotification extends Notification implements ShouldQueue
 {
     use Queueable;
 
-    /** @return list<string> */
+    /**
+     * @return list<string>
+     */
     public function via(object $notifiable): array
     {
         return ['mail'];
@@ -107,13 +109,17 @@ class VerifierReleasedOnceNotification extends Notification implements ShouldQue
 {
     use Queueable;
 
-    /** @return list<string> */
+    /**
+     * @return list<string>
+     */
     public function via(object $notifiable): array
     {
         return ['mail'];
     }
 
-    /** @return list<object> */
+    /**
+     * @return list<object>
+     */
     public function middleware(): array
     {
         return [new VerifierReleaseOnceMiddleware];
