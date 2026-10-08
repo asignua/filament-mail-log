@@ -26,14 +26,25 @@ class MailLogRepository
         return MailLog::query();
     }
 
-    public function findQueuedByJob(string $jobId, ?string $connection): ?MailLog
+    public function findQueuedByJob(string $jobId, ?string $connection, ?string $uuid = null): ?MailLog
     {
-        return $this->query()
-            ->where('job_id', $jobId)
-            ->where('queue_connection', $connection)
-            ->where('status', MailStatus::Queued->value)
-            ->latest('id')
-            ->first();
+        return $this->queuedForJob($jobId, $connection, $uuid)->latest('id')->first();
+    }
+
+    /**
+     * The payload uuid identifies a job across retries on every driver; the id only where the driver keeps it.
+     *
+     * @return Builder<MailLog>
+     */
+    private function queuedForJob(?string $jobId, ?string $connection, ?string $uuid): Builder
+    {
+        $query = $this->query()->where('status', MailStatus::Queued->value);
+
+        if ($uuid !== null && $uuid !== '') {
+            return $query->where('job_uuid', $uuid);
+        }
+
+        return $query->where('job_id', (string) $jobId)->where('queue_connection', $connection);
     }
 
     public function markSent(string $ulid, ?string $messageId): void
@@ -62,11 +73,19 @@ class MailLogRepository
     /**
      * A job that died before it reached the mailer leaves its `queued` row behind.
      */
-    public function markFailedIfQueued(string $jobId, ?string $connection, string $error): int
+    public function markFailedIfQueued(string $jobId, ?string $connection, string $error, ?string $uuid = null): int
+    {
+        return $this->fail($this->queuedForJob($jobId, $connection, $uuid), $error);
+    }
+
+    /**
+     * `queued` rows nobody picked up or closed for a long time (a retry that took another route, a purged queue).
+     */
+    public function failStaleQueued(Carbon $before): int
     {
         return $this->fail(
-            $this->query()->where('job_id', $jobId)->where('queue_connection', $connection)->where('status', MailStatus::Queued->value),
-            $error,
+            $this->query()->where('status', MailStatus::Queued->value)->where('updated_at', '<', $before),
+            'The queued message was never sent: the job was lost, purged or kept being retried until the log gave up on it.',
         );
     }
 

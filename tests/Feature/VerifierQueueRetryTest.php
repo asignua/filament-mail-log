@@ -58,13 +58,13 @@ class VerifierQueueRetryTest extends TestCase
         // The first row is never closed: failStale() only handles `sending`.
         $mailable = (new WelcomeMail)->to('ann@example.test');
 
-        event(new JobQueued('fake', 'default', '901', new SendQueuedMailable($mailable), '{}', null));
-        event(new JobProcessing('fake', $this->job('901')));
-        event(new JobExceptionOccurred('fake', $this->job('901'), new RuntimeException('deadlock, will retry')));
+        event(new JobQueued('fake', 'default', '901', new SendQueuedMailable($mailable), '{"uuid":"uuid-1"}', null));
+        event(new JobProcessing('fake', $this->job('901', uuid: 'uuid-1')));
+        event(new JobExceptionOccurred('fake', $this->job('901', uuid: 'uuid-1'), new RuntimeException('deadlock, will retry')));
 
-        event(new JobProcessing('fake', $this->job('902')));
+        event(new JobProcessing('fake', $this->job('902', uuid: 'uuid-1')));
         Mail::mailer('array')->send($mailable);
-        event(new JobProcessed('fake', $this->job('902')));
+        event(new JobProcessed('fake', $this->job('902', uuid: 'uuid-1')));
 
         $this->travel(2)->days();
         $this->artisan('mail-log:prune')->assertSuccessful();
@@ -72,11 +72,12 @@ class VerifierQueueRetryTest extends TestCase
         $this->assertSame(0, MailLog::query()->where('status', MailStatus::Queued->value)->count());
     }
 
-    private function job(string $id, bool $released = false): Job
+    private function job(string $id, bool $released = false, ?string $uuid = null): Job
     {
         $job = Mockery::mock(Job::class)->shouldIgnoreMissing([]);
         $job->shouldReceive('getJobId')->andReturn($id);
         $job->shouldReceive('isReleased')->andReturn($released);
+        $job->shouldReceive('uuid')->andReturn($uuid);
         $job->shouldReceive('hasFailed')->andReturn(false);
 
         return $job;

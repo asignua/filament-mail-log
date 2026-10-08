@@ -21,6 +21,16 @@ class PruneCommand extends Command
             $this->components->warn("Marked {$stale} unconfirmed message(s) as failed.");
         }
 
+        $queuedMinutes = (int) config('filament-mail-log.queued_stale_after_minutes', 4320);
+
+        if ($queuedMinutes > 0) {
+            $lost = $repository->failStaleQueued(now()->subMinutes($queuedMinutes));
+
+            if ($lost > 0) {
+                $this->components->warn("Marked {$lost} long-queued message(s) as failed.");
+            }
+        }
+
         $option = $this->option('days');
         $days = (int) (is_numeric($option) ? $option : config('filament-mail-log.retention_days', 90));
 

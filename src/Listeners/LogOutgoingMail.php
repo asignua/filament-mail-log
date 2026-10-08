@@ -68,6 +68,7 @@ final class LogOutgoingMail
             $log = new MailLog;
             $log->ulid = (string) Str::ulid();
             $log->job_id = (string) $event->id;
+            $log->job_uuid = $this->payloadUuid($event);
             $log->queue_connection = $event->connectionName;
             $log->status = MailStatus::Queued;
             $log->queued_at = now();
@@ -93,7 +94,7 @@ final class LogOutgoingMail
             $jobId = MailLogContext::jobId();
 
             // A queued message already has its row: the worker continues it instead of adding a second one.
-            $log = $jobId !== null ? $this->repository->findQueuedByJob($jobId, MailLogContext::connection()) : null;
+            $log = $jobId !== null ? $this->repository->findQueuedByJob($jobId, MailLogContext::connection(), MailLogContext::jobUuid()) : null;
             $log ??= new MailLog;
 
             // A fresh model has no ulid yet; a continued `queued` row keeps the one it was born with.
@@ -105,6 +106,7 @@ final class LogOutgoingMail
             $type = $data['__laravel_notification'] ?? $data['__laravel_mailable'] ?? $log->type;
 
             $log->job_id = $jobId;
+            $log->job_uuid = MailLogContext::jobUuid() ?? $log->job_uuid;
             $log->queue_connection = $jobId === null ? null : MailLogContext::connection();
             $log->status = MailStatus::Sending;
             $log->type = is_string($type) ? $type : null;
@@ -181,7 +183,8 @@ final class LogOutgoingMail
             $sync = $event->connectionName === 'sync' || config('queue.connections.'.$event->connectionName.'.driver') === 'sync';
 
             // A sync job runs inside the request / job that dispatched it: keep that frame for later.
-            MailLogContext::startJob($id === '' ? null : (string) $id, $event->connectionName, $sync);
+            $uuid = $event->job->uuid();
+            MailLogContext::startJob($id === '' ? null : (string) $id, $event->connectionName, $sync, is_string($uuid) && $uuid !== '' ? $uuid : null);
         } catch (Throwable $e) {
             $this->warn('job start', $e);
         }
@@ -194,8 +197,12 @@ final class LogOutgoingMail
             // "sending" never got an answer.
             $this->repository->markFailedIfSending(MailLogContext::flush(), self::UNCONFIRMED);
 
-            // A job that returned without sending (notification vetoed, model deleted) leaves its `queued` row.
-            $this->failQueued($event->job->getJobId(), $event->connectionName, 'The queued job finished without sending the message.');
+            // A job that released itself (rate limiting / throttling middleware) also fires JobProcessed: it
+            // will run again, so its `queued` row stays. A job that returned without sending (notification
+            // vetoed, model deleted) leaves its `queued` row and is closed here.
+            if (!$event->job->isReleased()) {
+                $this->failQueued($event->job->getJobId(), $event->connectionName, 'The queued job finished without sending the message.', MailLogContext::jobUuid());
+            }
         } catch (Throwable $e) {
             $this->warn('job processed', $e);
         } finally {
@@ -212,7 +219,7 @@ final class LogOutgoingMail
             // A job that will be retried keeps its `queued` row for the next attempt (same job id on redis /
             // SQS); only the final failure (JobFailed, or already failed here) closes it.
             if ($event->job->hasFailed()) {
-                $this->failQueued($event->job->getJobId(), $event->connectionName, $error);
+                $this->failQueued($event->job->getJobId(), $event->connectionName, $error, MailLogContext::jobUuid());
             }
         } catch (Throwable $e) {
             $this->warn('job exception', $e);
@@ -224,7 +231,8 @@ final class LogOutgoingMail
     public function jobFailed(JobFailed $event): void
     {
         try {
-            $this->failQueued($event->job->getJobId(), $event->connectionName, Str::limit($event->exception->getMessage(), 1000));
+            $uuid = $event->job->uuid();
+            $this->failQueued($event->job->getJobId(), $event->connectionName, Str::limit($event->exception->getMessage(), 1000), is_string($uuid) && $uuid !== '' ? $uuid : null);
         } catch (Throwable $e) {
             $this->warn('job failed', $e);
         }
@@ -258,11 +266,24 @@ final class LogOutgoingMail
         }
     }
 
-    private function failQueued(string|int|null $jobId, ?string $connection, string $error): void
+    private function failQueued(string|int|null $jobId, ?string $connection, string $error, ?string $uuid = null): void
     {
-        if ($jobId !== null && $jobId !== '') {
+        if ($uuid !== null && $uuid !== '') {
+            $this->repository->markFailedIfQueued((string) $jobId, $connection, $error, $uuid);
+        } elseif ($jobId !== null && $jobId !== '') {
             $this->repository->markFailedIfQueued((string) $jobId, $connection, $error);
         }
+    }
+
+    private function payloadUuid(JobQueued $event): ?string
+    {
+        try {
+            $uuid = $event->payload()['uuid'] ?? null;
+        } catch (Throwable) {
+            return null;
+        }
+
+        return is_string($uuid) && $uuid !== '' ? $uuid : null;
     }
 
     private function enabled(): bool

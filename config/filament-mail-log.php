@@ -43,6 +43,12 @@ return [
     'stale_after_minutes' => 30,
 
     /*
+     * A `queued` row older than this many minutes is marked failed by `mail-log:prune` (the job was lost,
+     * purged, or its retry took another route). Keep it above your longest mail delay. 0 = never.
+     */
+    'queued_stale_after_minutes' => 4320,
+
+    /*
      * Name of the correlation header. Symfony clones the message inside the transport, so MessageSending
      * can only be tied to MessageSent through a header (it survives the clone). The value is a random
      * ULID, it carries nothing sensitive, but it does reach the recipient.

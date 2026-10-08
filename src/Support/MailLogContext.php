@@ -21,7 +21,9 @@ final class MailLogContext
 
     private static ?string $connection = null;
 
-    /** @var list<array{inFlight: list<string>, jobId: ?string, connection: ?string}> */
+    private static ?string $jobUuid = null;
+
+    /** @var list<array{inFlight: list<string>, jobId: ?string, connection: ?string, jobUuid: ?string}> */
     private static array $stack = [];
 
     public static function push(string $ulid): void
@@ -62,10 +64,10 @@ final class MailLogContext
         return $ulids;
     }
 
-    public static function startJob(?string $jobId, ?string $connection = null, bool $nested = false): void
+    public static function startJob(?string $jobId, ?string $connection = null, bool $nested = false, ?string $jobUuid = null): void
     {
         if ($nested) {
-            self::$stack[] = ['inFlight' => self::$inFlight, 'jobId' => self::$jobId, 'connection' => self::$connection];
+            self::$stack[] = ['inFlight' => self::$inFlight, 'jobId' => self::$jobId, 'connection' => self::$connection, 'jobUuid' => self::$jobUuid];
         } else {
             self::$stack = [];
         }
@@ -73,6 +75,7 @@ final class MailLogContext
         self::$inFlight = [];
         self::$jobId = $jobId;
         self::$connection = $connection;
+        self::$jobUuid = $jobUuid;
     }
 
     /**
@@ -85,11 +88,20 @@ final class MailLogContext
         self::$inFlight = $frame['inFlight'] ?? [];
         self::$jobId = $frame['jobId'] ?? null;
         self::$connection = $frame['connection'] ?? null;
+        self::$jobUuid = $frame['jobUuid'] ?? null;
     }
 
     public static function jobId(): ?string
     {
         return self::$jobId;
+    }
+
+    /**
+     * The payload uuid: unlike the job id it survives a retry on every driver (the database driver re-inserts a released job).
+     */
+    public static function jobUuid(): ?string
+    {
+        return self::$jobUuid;
     }
 
     public static function connection(): ?string
@@ -102,6 +114,7 @@ final class MailLogContext
         self::$inFlight = [];
         self::$jobId = null;
         self::$connection = null;
+        self::$jobUuid = null;
         self::$stack = [];
     }
 }

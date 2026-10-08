@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property int $id
  * @property string $ulid
  * @property string|null $job_id
+ * @property string|null $job_uuid
  * @property string|null $queue_connection
  * @property string|null $message_id
  * @property string|null $mailer
