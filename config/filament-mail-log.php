@@ -111,10 +111,21 @@ return [
         /*
          * "password: hunter2", "token = abc" inside a text. The label is kept, the value is redacted.
          */
-        'credential_labels' => ['password', 'passcode', 'passphrase', 'secret', 'api key', 'api_key', 'token', 'pin', 'otp'],
+        'credential_labels' => [
+            'password', 'passcode', 'passphrase', 'secret', 'api key', 'api_key', 'token', 'pin', 'otp',
+            // uk / ru
+            'пароль', 'код', 'токен', 'секрет', 'пін', 'пин', 'парольна фраза',
+            // de
+            'passwort', 'kennwort', 'geheimnis', 'sicherheitscode', 'bestätigungscode',
+            // pl
+            'hasło', 'kod', 'sekret',
+            // es
+            'contraseña', 'código', 'clave', 'secreto',
+        ],
 
         /*
          * Extra regular expressions (full PCRE with delimiters). The whole match is replaced by [REDACTED].
+         * Add the `u` flag (`~…~iu`) for any non-ASCII text, otherwise `\b` and `/i` ignore UTF-8 letters.
          * A pattern that fails at runtime (backtrack limit) makes the stored text "[redaction failed]".
          */
         'patterns' => [],

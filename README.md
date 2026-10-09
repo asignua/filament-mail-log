@@ -121,7 +121,7 @@ Applied to the bodies, the subject, the header values and the error text:
 - `redaction.path_prefixes`: `/reset-password/{token}` becomes `/reset-password/[REDACTED]` (also
   `verify-email`, `magic-link`, `invitation`, ...).
 - `redaction.credential_labels`: `Password: hunter2` keeps the label and drops the value.
-- `redaction.patterns`: your own regexes (the whole match is replaced).
+- `redaction.patterns`: your own regexes (the whole match is replaced). Add the `u` flag (`~…~iu`) to anything that touches non-ASCII text: without it `\b` and `/i` do not see UTF-8 letters. The built-in rules and `credential_labels` (en, uk/ru, de, pl, es) are already UTF-8 safe.
 
 It fails closed: a pattern that breaks at run time (PCRE backtrack limit, an invalid regex) replaces the whole text
 with `[redaction failed]`. Add the parameters of your own signed links to the list; the defaults can not know them.

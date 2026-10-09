@@ -13,6 +13,9 @@ namespace Asignua\FilamentMailLog\Support;
  *  - the value after a credential label (`Password: hunter2`, `token = abc`);
  *  - whatever the configured extra regular expressions match.
  *
+ * Every built-in regex is UTF-8 aware (`u` flag, Unicode-aware word boundary), so labels such as `Пароль` or
+ * `Hasło` work. The same goes for your own `redaction.patterns`: add the `u` flag to them.
+ *
  * Fail closed: if a pattern can not be applied (a broken regex, the PCRE backtrack limit on a hostile
  * body), the whole text is replaced by {@see self::FAILED} instead of being stored half-cleaned.
  * The markers are language-neutral on purpose: the redaction runs in a queue worker whose locale is the
@@ -31,6 +34,12 @@ final class MailRedactor
         }
 
         $redacted = false;
+
+        // Every rule runs with the `u` flag, which fails on invalid UTF-8 (for instance a body cut by
+        // `body.max_bytes` in the middle of a multibyte character): scrub it instead of failing closed.
+        if (!mb_check_encoding($text, 'UTF-8')) {
+            $text = mb_scrub($text, 'UTF-8');
+        }
 
         foreach (self::rules() as [$pattern, $replacement]) {
             $count = 0;
@@ -67,13 +76,13 @@ final class MailRedactor
         if ($parameters !== []) {
             // The lookbehind accepts `;` so that the `&amp;` separator of HTML bodies works too.
             $rules[] = [
-                '~(?<=[?&;#])('.self::alternation($parameters).')=[^&\s"\'<>#]*~i',
+                '~(?<=[?&;#])('.self::alternation($parameters).')=[^&\s"\'<>#]*~iu',
                 '$1='.self::PLACEHOLDER,
             ];
 
             // The same parameter inside a percent-encoded URL (`?redirect=https%3A%2F%2F…%3Fsignature%3D…`).
             $rules[] = [
-                '~(?<=%3F|%26|%23)('.self::alternation($parameters).')%3D[^&\s"\'<>%]*~i',
+                '~(?<=%3F|%26|%23)('.self::alternation($parameters).')%3D[^&\s"\'<>%]*~iu',
                 '$1%3D'.self::PLACEHOLDER,
             ];
         }
@@ -82,7 +91,7 @@ final class MailRedactor
 
         if ($paths !== []) {
             $rules[] = [
-                '~(/(?:'.self::alternation($paths).'))/[^/\s"\'<>?#]+~i',
+                '~(/(?:'.self::alternation($paths).'))/[^/\s"\'<>?#]+~iu',
                 '$1/'.self::PLACEHOLDER,
             ];
         }
@@ -92,9 +101,9 @@ final class MailRedactor
         if ($labels !== []) {
             // HTML whitespace entities count as spaces. The value runs to the end of the line or the next tag:
             // a generated password may hold any punctuation, and over-redacting is fine for an audit log.
-            $space = '(?:\s|&nbsp;|&\#160;|&\#xa0;)';
+            $space = '(?:\s|\x{00A0}|&nbsp;|&\#160;|&\#xa0;)';
             $rules[] = [
-                '~\b('.self::alternation($labels).')('.$space.'*[:=](?:'.$space.'|<[^>]{0,200}>)*)(?!\[REDACTED\])[^\r\n<]+~i',
+                '~(?<![\p{L}\p{N}_])('.self::alternation($labels).')('.$space.'*[:=](?:'.$space.'|<[^>]{0,200}>)*)(?!\[REDACTED\])[^\r\n<]+~iu',
                 '$1$2'.self::PLACEHOLDER,
             ];
         }
