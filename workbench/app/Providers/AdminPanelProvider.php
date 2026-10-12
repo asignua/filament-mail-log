@@ -16,10 +16,20 @@ use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\AuthenticateSession;
 use Illuminate\Session\Middleware\StartSession;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 
 class AdminPanelProvider extends PanelProvider
 {
+    public function boot(): void
+    {
+        // The log is closed until you open it (see the README); the demo opens it for the one demo user.
+        // The test suite defines the gate itself and checks the closed default.
+        if (!$this->app->runningUnitTests()) {
+            Gate::define('viewMailLog', fn (): bool => true);
+        }
+    }
+
     public function panel(Panel $panel): Panel
     {
         return $panel
@@ -27,6 +37,7 @@ class AdminPanelProvider extends PanelProvider
             ->id('admin')
             ->path('admin')
             ->login()
+            ->brandName('Acme Supply')
             ->plugin(MailLogPlugin::make())
             ->middleware([
                 EncryptCookies::class,

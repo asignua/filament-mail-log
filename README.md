@@ -1,5 +1,7 @@
 # Filament Mail Log
 
+<img class="filament-hidden" src="https://raw.githubusercontent.com/asignua/filament-mail-log/v1.0.1/art/cover.jpg" alt="Filament Mail Log">
+
 [![Tests](https://img.shields.io/github/actions/workflow/status/asignua/filament-mail-log/tests.yml?branch=main&label=tests)](https://github.com/asignua/filament-mail-log/actions/workflows/tests.yml)
 
 A read-only log of every message your Laravel application sends, inside a Filament 5 panel. It answers "did the
@@ -12,7 +14,21 @@ redacted **before** the copy is stored.
 
 ## Screenshots
 
-_Screenshots: TODO (add images to `art/`, `cover.jpg` first, and reference them here)._
+Every message with its status (queued, sent or failed), recipient, subject and type:
+
+![The mail log table with sent, queued and failed messages](https://raw.githubusercontent.com/asignua/filament-mail-log/v1.0.1/art/list.jpg)
+
+A failed message keeps the transport error, the recipients and the timeline:
+
+![A failed message with the SMTP error](https://raw.githubusercontent.com/asignua/filament-mail-log/v1.0.1/art/view-failed.jpg)
+
+Signed-link signatures and reset tokens are replaced before the copy is stored:
+
+![Plain text tab with a redacted signature and token](https://raw.githubusercontent.com/asignua/filament-mail-log/v1.0.1/art/view-text.jpg)
+
+Dark mode:
+
+![The mail log in dark mode](https://raw.githubusercontent.com/asignua/filament-mail-log/v1.0.1/art/list-dark.jpg)
 
 ## Requirements
 

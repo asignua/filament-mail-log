@@ -1,0 +1,50 @@
+# Try the mail log by hand:  vendor/bin/testbench workbench:build   then   vendor/bin/testbench serve --host=0.0.0.0
+# Log in at /admin as emma@example.com / password (demo rows: vendor/bin/testbench db:seed --class="Workbench\Database\Seeders\DemoSeeder").
+providers:
+  - Filament\Actions\ActionsServiceProvider
+  - BladeUI\Heroicons\BladeHeroiconsServiceProvider
+  - BladeUI\Icons\BladeIconsServiceProvider
+  - Filament\FilamentServiceProvider
+  - Filament\Forms\FormsServiceProvider
+  - Filament\Infolists\InfolistsServiceProvider
+  - Livewire\LivewireServiceProvider
+  - Filament\Notifications\NotificationsServiceProvider
+  - Filament\Schemas\SchemasServiceProvider
+  - Filament\Support\SupportServiceProvider
+  - Filament\Tables\TablesServiceProvider
+  - Filament\Widgets\WidgetsServiceProvider
+  - RyanChandler\BladeCaptureDirective\BladeCaptureDirectiveServiceProvider
+  - Asignua\FilamentMailLog\MailLogServiceProvider
+  - Workbench\App\Providers\AdminPanelProvider
+
+migrations:
+  - workbench/database/migrations
+  - workbench/database/demo-migrations
+
+seeders:
+  - Workbench\Database\Seeders\DatabaseSeeder
+
+env:
+  APP_KEY: base64:YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE=
+  DB_CONNECTION: sqlite
+  SESSION_DRIVER: file
+  QUEUE_CONNECTION: sync
+  BROADCAST_CONNECTION: "null"
+
+workbench:
+  start: /admin
+  install: true
+  discovers:
+    web: false
+    api: false
+    commands: false
+    components: false
+    views: false
+  build:
+    - asset-publish
+    - create-sqlite-db
+    - db-wipe
+    - migrate-fresh
+  assets:
+    - laravel-assets
+  sync: []
