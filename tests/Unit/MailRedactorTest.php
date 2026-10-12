@@ -54,6 +54,30 @@ class MailRedactorTest extends TestCase
         );
     }
 
+    public function test_the_laravel_verification_url_loses_the_id_and_the_hash(): void
+    {
+        $url = 'http://localhost/email/verify/41/9c1f0d7ab2e84c55?expires=1760000000&signature=SIGSECRET';
+
+        $text = (string) MailRedactor::apply($url)->text;
+
+        $this->assertSame('http://localhost/email/verify/[REDACTED]?expires=1760000000&signature=[REDACTED]', $text);
+
+        $text = (string) MailRedactor::apply('http://localhost/verify-email/41/9c1f0d7ab2e84c55?expires=1&amp;signature=S')->text;
+
+        $this->assertStringNotContainsString('9c1f0d7ab2e84c55', $text);
+        $this->assertStringContainsString('/verify-email/[REDACTED]?', $text);
+    }
+
+    public function test_the_password_reset_url_loses_the_token_but_keeps_the_email_query(): void
+    {
+        // The e-mail address is personal data, not a secret: the log stores the mail's recipient anyway,
+        // and the README says redaction removes secrets, not names. Use `redaction.patterns` to drop it too.
+        $this->assertSame(
+            'http://localhost/reset-password/[REDACTED]?email=ann%40example.test',
+            MailRedactor::apply('http://localhost/reset-password/8f3c2a91d0b74e6f?email=ann%40example.test')->text,
+        );
+    }
+
     public function test_a_parameter_that_only_ends_with_a_listed_name_is_not_touched(): void
     {
         $result = MailRedactor::apply('https://x.test/?monkey=1&hotkey=2&page=3');

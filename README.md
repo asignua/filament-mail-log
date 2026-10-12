@@ -26,6 +26,10 @@ Signed-link signatures and reset tokens are replaced before the copy is stored:
 
 ![Plain text tab with a redacted signature and token](https://raw.githubusercontent.com/asignua/filament-mail-log/v1.0.1/art/view-text.jpg)
 
+The HTML tab renders the stored body in a sandboxed frame (no scripts, remote images off until you ask):
+
+![The HTML tab](https://raw.githubusercontent.com/asignua/filament-mail-log/v1.0.1/art/view-html.jpg)
+
 Dark mode:
 
 ![The mail log in dark mode](https://raw.githubusercontent.com/asignua/filament-mail-log/v1.0.1/art/list-dark.jpg)
@@ -135,7 +139,8 @@ Applied to the bodies, the subject, the header values and the error text:
 - `redaction.query_parameters`: the value of `signature`, `token`, `code`, `api_key`, ... in any URL becomes
   `[REDACTED]` (also inside HTML, where `&amp;` separates parameters).
 - `redaction.path_prefixes`: `/reset-password/{token}` becomes `/reset-password/[REDACTED]` (also
-  `verify-email`, `magic-link`, `invitation`, ...).
+  `verify-email`, `magic-link`, `invitation`, ...). Every segment after the prefix is removed, so
+  `/email/verify/{id}/{hash}` becomes `/email/verify/[REDACTED]`; the query string is handled by `query_parameters`.
 - `redaction.credential_labels`: `Password: hunter2` keeps the label and drops the value.
 - `redaction.patterns`: your own regexes (the whole match is replaced). Add the `u` flag (`~…~iu`) to anything that touches non-ASCII text: without it `\b` and `/i` do not see UTF-8 letters. The built-in rules and `credential_labels` (en, uk/ru, de, pl, es) are already UTF-8 safe.
 

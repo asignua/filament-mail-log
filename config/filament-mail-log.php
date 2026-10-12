@@ -100,8 +100,9 @@ return [
         ],
 
         /*
-         * URL path prefixes followed by a secret segment: /reset-password/{token} becomes
-         * /reset-password/[REDACTED]. Matched anywhere in a URL path, case-insensitive.
+         * URL path prefixes followed by secret segments: /reset-password/{token} becomes
+         * /reset-password/[REDACTED], and /email/verify/{id}/{hash} becomes /email/verify/[REDACTED] (every
+         * segment after the prefix goes, up to the query string). Matched anywhere in a URL path, case-insensitive.
          */
         'path_prefixes' => [
             'reset-password', 'password/reset', 'password-reset', 'reset_password', 'forgot-password/reset',

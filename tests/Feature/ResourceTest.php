@@ -204,6 +204,15 @@ class ResourceTest extends TestCase
         $this->assertStringNotContainsString('Content-Security-Policy', $out);
     }
 
+    public function test_the_frame_is_full_width_without_any_tailwind_class(): void
+    {
+        $out = Blade::render('<x-filament-mail-log::mail-frame html="<p>x</p>" height="75vh" />');
+
+        $this->assertStringContainsString('width: 100%', $out);
+        $this->assertStringContainsString('height: 75vh', $out);
+        $this->assertStringNotContainsString('w-full', $out);
+    }
+
     public function test_the_text_tab_escapes_the_body(): void
     {
         $this->allow();

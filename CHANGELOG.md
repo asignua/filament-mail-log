@@ -4,6 +4,8 @@ All notable changes to `asignua/filament-mail-log` are documented here.
 
 ## 1.0.1 - Unreleased
 
+- Fix: the HTML preview iframe is full width on a stock Filament panel (it used Tailwind classes that Filament's CSS does not contain, so it was 300px wide). Inline styles, light and dark mode.
+- Fix: redaction of `redaction.path_prefixes` now removes EVERY segment after the prefix. Laravel's verification link `/email/verify/{id}/{hash}` was stored as `/email/verify/[REDACTED]/{hash}`: the id was hidden and the secret hash stayed visible. The e-mail query of a reset link (`?email=…`) is still kept: it is personal data, not a secret (use `redaction.patterns` to drop it).
 - Docs: screenshots, cover and a workbench demo.
 
 ## 1.0.0 (unreleased)

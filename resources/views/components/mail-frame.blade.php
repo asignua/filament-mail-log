@@ -11,6 +11,6 @@
     sandbox=""
     referrerpolicy="no-referrer"
     loading="lazy"
-    style="height: {{ $height }}"
-    {{ $attributes->merge(['class' => 'w-full rounded-xl bg-white ring-1 ring-gray-950/5 dark:ring-white/10']) }}
+    {{-- Inline on purpose: stock Filament CSS has no utility classes, so `w-full` & co. would leave a 300px frame. --}}
+    {{ $attributes->merge(['class' => 'fi-mail-log-frame'])->merge(['style' => 'display: block; box-sizing: border-box; width: 100%; min-height: 24rem; height: '.$height.'; border: 1px solid rgb(128 128 128 / .25); border-radius: .75rem; background-color: #fff']) }}
 ></iframe>

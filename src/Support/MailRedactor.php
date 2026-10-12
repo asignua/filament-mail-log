@@ -9,7 +9,7 @@ namespace Asignua\FilamentMailLog\Support;
  *
  * What goes (see `filament-mail-log.redaction`):
  *  - the value of configured query parameters (`signature=…`, `token=…`) in any URL;
- *  - the secret segment after configured path prefixes (`/reset-password/{token}`);
+ *  - the secret segments after configured path prefixes (`/reset-password/{token}`, `/email/verify/{id}/{hash}`);
  *  - the value after a credential label (`Password: hunter2`, `token = abc`);
  *  - whatever the configured extra regular expressions match.
  *
@@ -91,7 +91,9 @@ final class MailRedactor
 
         if ($paths !== []) {
             $rules[] = [
-                '~(/(?:'.self::alternation($paths).'))/[^/\s"\'<>?#]+~iu',
+                // Every segment after the prefix goes: Laravel's `/email/verify/{id}/{hash}` carries the secret
+                // (sha1 of the e-mail) in the LAST segment, `/reset-password/{token}` in the only one.
+                '~(/(?:'.self::alternation($paths).'))(?:/[^/\s"\'<>?#]+)+~iu',
                 '$1/'.self::PLACEHOLDER,
             ];
         }
