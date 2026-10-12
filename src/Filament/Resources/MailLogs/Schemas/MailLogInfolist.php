@@ -76,13 +76,11 @@ class MailLogInfolist
                     ]),
 
                     Tab::make($t('tabs.html'))->schema([
-                        // @phpstan-ignore argument.type (the view namespace is registered at run time)
-                        ViewEntry::make('html_body')->hiddenLabel()->view('filament-mail-log::entries.mail-html'),
+                        ViewEntry::make('html_body')->hiddenLabel()->view(self::view('filament-mail-log::entries.mail-html')),
                     ]),
 
                     Tab::make($t('tabs.text'))->schema([
-                        // @phpstan-ignore argument.type (the view namespace is registered at run time)
-                        ViewEntry::make('text_body')->hiddenLabel()->view('filament-mail-log::entries.mail-text'),
+                        ViewEntry::make('text_body')->hiddenLabel()->view(self::view('filament-mail-log::entries.mail-text')),
                     ]),
 
                     Tab::make($t('tabs.headers'))->schema([
@@ -132,5 +130,17 @@ class MailLogInfolist
         }
 
         return $bytes < 1_048_576 ? round($bytes / 1024, 1).' KB' : round($bytes / 1_048_576, 1).' MB';
+    }
+
+    /**
+     * The view namespace is registered at run time, so a literal is not a known view-string to
+     * every Larastan version (an inline ignore is then reported as unmatched on newer ones).
+     *
+     * @return view-string
+     */
+    private static function view(string $name): string
+    {
+        /** @var view-string $name */
+        return $name;
     }
 }
