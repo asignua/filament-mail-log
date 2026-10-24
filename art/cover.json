@@ -1,0 +1,18 @@
+{
+    "shots": [],
+    "covers": [
+        {
+            "html": "../../scripts/art/cover.html",
+            "out": "cover.jpg",
+            "query": {
+                "eyebrow": "Plugin for Filament 5",
+                "title": "Mail Log",
+                "lead": "Every message your app sends — queued, sent or failed, secrets redacted before storage. Resend any of them in one click.",
+                "chips": "queued → sent → failed|Sandboxed preview|Secrets redacted|Resend",
+                "shot": "../../filament-mail-log/art/resend.jpg",
+                "crop": "762,140,1356,1290",
+                "brand": "asignua"
+            }
+        }
+    ]
+}
