@@ -1,5 +1,7 @@
 # Filament Mail Log
 
+[![Stand With Ukraine](https://raw.githubusercontent.com/vshymanskyy/StandWithUkraine/main/badges/StandWithUkraine.svg)](https://stand-with-ukraine.pp.ua)
+
 <img class="filament-hidden" src="https://raw.githubusercontent.com/asignua/filament-mail-log/v1.0.1/art/cover.jpg" alt="Filament Mail Log">
 
 [![Tests](https://img.shields.io/github/actions/workflow/status/asignua/filament-mail-log/tests.yml?branch=main&label=tests)](https://github.com/asignua/filament-mail-log/actions/workflows/tests.yml)
