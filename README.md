@@ -4,7 +4,7 @@
 
 [![Tests](https://img.shields.io/github/actions/workflow/status/asignua/filament-mail-log/tests.yml?branch=main&label=tests)](https://github.com/asignua/filament-mail-log/actions/workflows/tests.yml)
 
-A read-only log of every message your Laravel application sends, inside a Filament 5 panel. It answers "did the
+A log of every message your Laravel application sends, inside a Filament 5 panel. It answers "did the
 customer get the email, and what did it say?" without a third-party service: each message is followed from the
 queue to the transport (`queued`, `sending`, `sent`, `failed`), stored with its recipients, headers, bodies and
 attachment names, and shown in a sandboxed preview.
@@ -29,6 +29,10 @@ Signed-link signatures and reset tokens are replaced before the copy is stored:
 The HTML tab renders the stored body in a sandboxed frame (no scripts, remote images off until you ask):
 
 ![The HTML tab](https://raw.githubusercontent.com/asignua/filament-mail-log/v1.0.1/art/view-html.jpg)
+
+Resend a stored message to the same or other recipients (separate permission, with a warning when secrets were removed):
+
+![The Resend modal](https://raw.githubusercontent.com/asignua/filament-mail-log/v1.1.0/art/resend.jpg)
 
 Dark mode:
 
@@ -74,6 +78,12 @@ or pass a callback to the plugin (it wins over the gate):
 MailLogPlugin::make()->authorize(fn (): bool => auth()->user()?->isAdmin() === true);
 ```
 
+To let people **resend** messages, open the second, separate permission (see [Resend](#resend)):
+
+```php
+Gate::define('resendMailLog', fn (User $user): bool => $user->isAdmin());
+```
+
 ## Usage
 
 Logging starts as soon as the package is installed; no code changes. Every `Mail::send()`, queued mailable and
@@ -88,6 +98,34 @@ mail notification is recorded.
 
 The list filters by status, type, recipient (To/Cc/Bcc), period and text in the body. The view page has
 **Details**, **HTML** (sandboxed iframe), **Plain text** and **Headers** tabs.
+
+### Resend
+
+The **Resend** action (message page header and the row menu of the table) mails a stored message again, to the same
+or to other recipients. It opens a confirmation modal with the original **To** addresses as editable tags
+(validated as e-mail addresses), and optional **Cc** / **Bcc** toggles that are off by default.
+
+- **Closed by default, and separate from viewing.** Resending mails a third party, so seeing the log does not allow it.
+  The permission comes from `->authorizeResend(fn () => ...)` on the plugin (wins), else from the
+  `resendMailLog` gate ability, else from **nobody**. The user must also be allowed to open the log.
+  The permission is checked again when the modal is submitted, not only when the button is drawn.
+- **It sends the stored copy.** If secrets were removed from it (`Secrets removed` is on), the modal shows a warning:
+  signed links, reset tokens and passwords are `[REDACTED]` in the resent message, so those links will not work.
+  Resending is still allowed (a notification, an invoice or a failed delivery is a legitimate case). The same goes for
+  a body cut at `body.max_bytes`. If no body was stored (`body.store=false`), the action is hidden.
+- **Attachments are not resent.** Only their names and sizes are stored, never the contents; the modal says so when the
+  original had attachments.
+- **What is copied:** subject, html and plain-text body, the sender, `Reply-To`, `X-Priority` and `Importance`. Other
+  stored headers (ids, dates, tracking, `List-Unsubscribe` with a redacted link) are not copied.
+- **The resend is logged as a new row**, linked to the original: the message page shows "Resent from #12" and
+  "Resent 2 times", and the list has a "Resent from" column (hidden by default).
+- Sent through `resend.mailer` (default: the application's default mailer) and, with `resend.queue`, through the queue
+  (the row then starts as `queued`).
+
+**Upgrading from 1.0:** the link lives in a new `resent_from_id` column, added by a new migration. `vendor:publish
+--tag=filament-mail-log-migrations` publishes both stubs, so delete the new copy of `create_mail_logs_table` (the table
+exists) and keep `add_resent_from_id_to_mail_logs_table`, then `php artisan migrate`. Until it ran, logging keeps working
+and the Resend action stays hidden.
 
 ### Mail preview for designers
 
@@ -112,7 +150,7 @@ marks `sending` rows nobody confirmed for `stale_after_minutes` as failed. It is
 
 ## Configuration
 
-Fluent setters on `MailLogPlugin`: `authorize()`, `resource()`, `previews()`, `previewPage()`, `previewLocales()`,
+Fluent setters on `MailLogPlugin`: `authorize()`, `authorizeResend()`, `resource()`, `previews()`, `previewPage()`, `previewLocales()`,
 `navigationGroup()`, `navigationSort()`, `navigationIcon()`.
 
 Everything else is in the config (`php artisan vendor:publish --tag=filament-mail-log-config`):
@@ -130,6 +168,9 @@ Everything else is in the config (`php artisan vendor:publish --tag=filament-mai
 | `types` | `[]` | `[WelcomeMail::class => 'Welcome mail']` labels; subclasses inherit |
 | `preview.csp` | restrictive | Content-Security-Policy inside the preview iframe (no remote images) |
 | `preview.csp_remote_images` | allows `https:` images | policy after "Load remote images" |
+| `resend.enabled` | `true` (`MAIL_LOG_RESEND`) | master switch for the Resend action (it is still closed until the gate or `authorizeResend()` opens it) |
+| `resend.mailer` | `null` (`MAIL_LOG_RESEND_MAILER`) | mailer for a resend; `null` = the default mailer |
+| `resend.queue` | `false` (`MAIL_LOG_RESEND_QUEUE`) | queue the resend instead of sending it in the request (needs a worker) |
 | `isolate_connection` | `true` | write the log on a separate connection (see Gotchas) |
 
 ### Redaction

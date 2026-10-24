@@ -27,6 +27,7 @@ class AdminPanelProvider extends PanelProvider
         // The test suite defines the gate itself and checks the closed default.
         if (!$this->app->runningUnitTests()) {
             Gate::define('viewMailLog', fn (): bool => true);
+            Gate::define('resendMailLog', fn (): bool => true);
         }
     }
 

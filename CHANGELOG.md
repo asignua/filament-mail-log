@@ -2,6 +2,14 @@
 
 All notable changes to `asignua/filament-mail-log` are documented here.
 
+## Unreleased
+
+- New: **Resend** action (message page and row menu): mails the stored copy again to the same or other recipients, with optional Cc/Bcc, validated addresses and a confirmation modal. Closed by default behind its own permission (`resendMailLog` gate or `MailLogPlugin::authorizeResend()`), separate from viewing the log.
+- The modal warns when secrets were removed from the stored copy (signed links will be broken) or the body was cut, and says that attachments are not resent (only their names are stored).
+- The resend is logged as a new row linked to the original (`resent_from_id`); the message page shows "Resent from #id" / "Resent N times". **Needs the new migration** `add_resent_from_id_to_mail_logs_table` (publish and run it; until then logging works as before and the action is hidden).
+- Config: `resend.enabled`, `resend.mailer`, `resend.queue`.
+- English and Ukrainian translations.
+
 ## 1.0.1 - 2026-10-12
 
 - Fix: the HTML preview iframe is full width on a stock Filament panel (it used Tailwind classes that Filament's CSS does not contain, so it was 300px wide). Inline styles, light and dark mode.
