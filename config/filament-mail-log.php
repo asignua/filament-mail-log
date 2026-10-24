@@ -55,6 +55,106 @@ return [
      */
     'header' => 'X-Mail-Log-Id',
 
+    /*
+     * Delivery tracking: statuses reported by the mail provider (delivered, bounced, complained, opened, ...)
+     * through its webhook. Needs the `add_delivery_status_to_mail_logs_table` and `create_mail_log_events_table`
+     * migrations. A provider is on when `enabled` is true AND its secret is filled; a webhook for a provider
+     * that is off answers 404, one with a missing or wrong signature answers 403.
+     */
+    'webhooks' => [
+        /*
+         * URL prefix: the endpoint of a provider is POST {path}/{provider}, e.g. /mail-log/webhooks/postmark.
+         * Empty = the route is not registered at all. The route has no CSRF and no session; add rate limits
+         * with `middleware` if you want them (a busy provider sends many events per minute).
+         */
+        'path' => env('MAIL_LOG_WEBHOOKS_PATH', 'mail-log/webhooks'),
+
+        'middleware' => [],
+
+        'events_table' => env('MAIL_LOG_EVENTS_TABLE', 'mail_log_events'),
+
+        /*
+         * Seconds a signed timestamp may differ from now (replay protection). Providers that sign a
+         * timestamp: Mailgun, Resend, SendGrid, and SNS (Amazon SES).
+         */
+        'tolerance' => 300,
+
+        /*
+         * Keep the (cleaned) payload of every event for the "Delivery events" timeline. Secrets, signatures
+         * and signed links are removed before it is stored.
+         */
+        'store_payload' => true,
+
+        /*
+         * Stamp every outgoing message with `X-Metadata-mail_log_id` (a Symfony MetadataHeader: Postmark, Mailgun,
+         * SendGrid, Resend and SES API transports pass it to the provider as metadata / variables / tags, and the
+         * provider echoes it in its webhooks). Only when at least one provider is on. `X-Mail-Log-Id` is always set.
+         */
+        'stamp_metadata' => true,
+
+        /*
+         * More header names that receive the log id, for SMTP relays that read their own header,
+         * e.g. Postmark SMTP: ['X-PM-Metadata-mail_log_id'].
+         */
+        'stamp_headers' => [],
+
+        /*
+         * A provider is `name => [driver class, options]`. Add your own by implementing
+         * Asignua\FilamentMailLog\Webhooks\Contracts\WebhookDriver and listing it here.
+         */
+        'providers' => [
+            'postmark' => [
+                'driver' => Asignua\FilamentMailLog\Webhooks\Drivers\PostmarkDriver::class,
+                'enabled' => env('MAIL_LOG_POSTMARK_ENABLED', false),
+                // Postmark does not sign webhooks; it sends HTTP Basic credentials that you put in the webhook URL.
+                'username' => env('MAIL_LOG_POSTMARK_USERNAME'),
+                'password' => env('MAIL_LOG_POSTMARK_PASSWORD'),
+            ],
+            'mailgun' => [
+                'driver' => Asignua\FilamentMailLog\Webhooks\Drivers\MailgunDriver::class,
+                'enabled' => env('MAIL_LOG_MAILGUN_ENABLED', false),
+                // Mailgun > Sending > Webhooks > "HTTP webhook signing key".
+                'signing_key' => env('MAIL_LOG_MAILGUN_SIGNING_KEY'),
+            ],
+            'ses' => [
+                'driver' => Asignua\FilamentMailLog\Webhooks\Drivers\SesDriver::class,
+                'enabled' => env('MAIL_LOG_SES_ENABLED', false),
+                // ARNs of the SNS topics that may call the endpoint (anyone can create a validly signed SNS topic,
+                // so the signature alone proves nothing). Comma separated in the env.
+                'topic_arns' => array_values(array_filter(array_map('trim', explode(',', (string) env('MAIL_LOG_SES_TOPIC_ARNS', ''))))),
+                // Confirm the SNS subscription automatically (GET to the SubscribeURL of a signed request).
+                'auto_confirm' => true,
+                // SNS retries late, so its window is wider than the common one.
+                'tolerance' => 3600,
+            ],
+            'resend' => [
+                'driver' => Asignua\FilamentMailLog\Webhooks\Drivers\ResendDriver::class,
+                'enabled' => env('MAIL_LOG_RESEND_WEBHOOK_ENABLED', false),
+                // Resend > Webhooks > Signing secret ("whsec_...").
+                'secret' => env('MAIL_LOG_RESEND_WEBHOOK_SECRET'),
+            ],
+            'sendgrid' => [
+                'driver' => Asignua\FilamentMailLog\Webhooks\Drivers\SendGridDriver::class,
+                'enabled' => env('MAIL_LOG_SENDGRID_ENABLED', false),
+                // SendGrid > Settings > Mail Settings > Event Webhook > Signature Verification > Verification key.
+                'public_key' => env('MAIL_LOG_SENDGRID_PUBLIC_KEY'),
+            ],
+        ],
+    ],
+
+    /*
+     * The suppression list: addresses that hard-bounced or complained. Webhooks add them (`record`); with
+     * `enabled` a MessageSending listener drops them from every outgoing message, and a message left with no
+     * recipient is not sent at all (its row is `suppressed`). Needs the `create_mail_log_suppressions_table` migration.
+     */
+    'suppression' => [
+        'enabled' => env('MAIL_LOG_SUPPRESSION', false),
+
+        'record' => env('MAIL_LOG_SUPPRESSION_RECORD', true),
+
+        'table' => env('MAIL_LOG_SUPPRESSIONS_TABLE', 'mail_log_suppressions'),
+    ],
+
     'body' => [
         /*
          * Store the html/text bodies at all. Turn off when the mail is too sensitive to keep, even redacted.

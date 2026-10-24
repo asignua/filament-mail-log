@@ -4,13 +4,17 @@ declare(strict_types=1);
 
 namespace Asignua\FilamentMailLog\Filament\Resources\MailLogs\Schemas;
 
+use Asignua\FilamentMailLog\Enums\DeliveryEventType;
 use Asignua\FilamentMailLog\Enums\MailStatus;
 use Asignua\FilamentMailLog\Filament\Resources\MailLogs\MailLogResource;
 use Asignua\FilamentMailLog\Models\MailLog;
+use Asignua\FilamentMailLog\Models\MailLogEvent;
 use Asignua\FilamentMailLog\Support\MailResender;
 use Asignua\FilamentMailLog\Support\MailTypes;
+use Asignua\FilamentMailLog\Support\TrackingSchema;
 use Filament\Infolists\Components\IconEntry;
 use Filament\Infolists\Components\KeyValueEntry;
+use Filament\Infolists\Components\RepeatableEntry;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Infolists\Components\ViewEntry;
 use Filament\Schemas\Components\Section;
@@ -32,6 +36,16 @@ class MailLogInfolist
                     Tab::make($t('tabs.details'))->schema([
                         Section::make()->columns(2)->schema([
                             TextEntry::make('status')->label($t('columns.status'))->badge(),
+                            TextEntry::make('delivery_status')
+                                ->label($t('columns.delivery_status'))
+                                ->badge()
+                                ->placeholder('—')
+                                ->visible(fn (): bool => TrackingSchema::hasStatusColumn()),
+                            TextEntry::make('delivery_status_at')
+                                ->label($t('columns.delivery_status_at'))
+                                ->dateTime()
+                                ->placeholder('—')
+                                ->visible(fn (): bool => TrackingSchema::hasStatusColumn()),
                             TextEntry::make('subject')->label($t('columns.subject'))->placeholder('—'),
                             TextEntry::make('sender')->label($t('columns.sender'))->placeholder('—'),
                             TextEntry::make('recipients.to')->label($t('columns.to'))->listWithLineBreaks()->placeholder('—'),
@@ -62,7 +76,27 @@ class MailLogInfolist
 
                         Section::make($t('sections.error'))
                             ->schema([TextEntry::make('error')->hiddenLabel()->color('danger')])
-                            ->visible(fn (MailLog $record): bool => $record->status === MailStatus::Failed && filled($record->error)),
+                            ->visible(fn (MailLog $record): bool => in_array($record->status, [MailStatus::Failed, MailStatus::Suppressed], true) && filled($record->error)),
+
+                        Section::make($t('sections.delivery_events'))
+                            ->description($t('sections.delivery_events_help'))
+                            ->schema([
+                                RepeatableEntry::make('events')
+                                    ->hiddenLabel()
+                                    ->contained(false)
+                                    ->columns(5)
+                                    ->schema([
+                                        TextEntry::make('occurred_at')->label($t('columns.date'))->dateTime(),
+                                        TextEntry::make('type')
+                                            ->label($t('columns.event'))
+                                            ->badge()
+                                            ->formatStateUsing(fn (DeliveryEventType $state, MailLogEvent $record): string => $state->getLabel().($record->bounce === null ? '' : ' ('.$record->bounce->getLabel().')')),
+                                        TextEntry::make('provider')->label($t('columns.provider')),
+                                        TextEntry::make('recipient')->label($t('columns.recipient'))->placeholder('—'),
+                                        TextEntry::make('detail')->label($t('columns.detail'))->placeholder('—'),
+                                    ]),
+                            ])
+                            ->visible(fn (MailLog $record): bool => TrackingSchema::hasEventsTable() && $record->events->isNotEmpty()),
 
                         Section::make($t('sections.attachments'))
                             ->schema([

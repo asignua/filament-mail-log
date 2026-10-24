@@ -13,6 +13,7 @@ return [
         'sending' => 'Надсилається',
         'sent' => 'Надіслано',
         'failed' => 'Помилка',
+        'suppressed' => 'Заблоковано',
     ],
     'columns' => [
         'date' => 'Дата',
@@ -32,6 +33,11 @@ return [
         'value' => 'Значення',
         'resent_from' => 'Повторно з',
         'resent' => 'Повторні надсилання',
+        'delivery_status' => 'Доставка',
+        'delivery_status_at' => 'Статус доставки від',
+        'event' => 'Подія',
+        'provider' => 'Провайдер',
+        'detail' => 'Подробиці',
     ],
     'filters' => [
         'recipient' => 'Одержувач містить',
@@ -48,6 +54,8 @@ return [
     'sections' => [
         'error' => 'Помилка',
         'attachments' => 'Вкладення',
+        'delivery_events' => 'Події доставки',
+        'delivery_events_help' => 'Що повідомив поштовий провайдер після того, як лист залишив застосунок.',
     ],
     'actions' => [
         'load_images' => 'Завантажити зовнішні зображення',
@@ -78,6 +86,43 @@ return [
         'queued' => 'Лист поставлено в чергу',
         'failed' => 'Не вдалося надіслати лист повторно',
         'times' => 'Повторних надсилань: :count',
+    ],
+    'delivery_status' => [
+        'deferred' => 'Відкладено',
+        'soft_bounced' => 'Тимчасова відмова',
+        'delivered' => 'Доставлено',
+        'opened' => 'Відкрито',
+        'clicked' => 'Перехід за посиланням',
+        'rejected' => 'Відхилено',
+        'bounced' => 'Відмова (bounce)',
+        'complained' => 'Скарга на спам',
+    ],
+    'event_types' => [
+        'delivered' => 'Доставлено',
+        'bounced' => 'Відмова (bounce)',
+        'complained' => 'Скарга на спам',
+        'opened' => 'Відкрито',
+        'clicked' => 'Перехід за посиланням',
+        'rejected' => 'Відхилено',
+        'deferred' => 'Відкладено',
+    ],
+    'bounce_types' => [
+        'hard' => 'постійна',
+        'soft' => 'тимчасова',
+    ],
+    'suppression_reasons' => [
+        'hard_bounce' => 'Постійна відмова',
+        'complaint' => 'Скарга',
+    ],
+    'suppressions' => [
+        'navigation' => 'Чорний список',
+        'singular' => 'Заблокована адреса',
+        'plural' => 'Чорний список',
+        'email' => 'Адреса',
+        'reason' => 'Причина',
+        'remove' => 'Видалити',
+        'remove_heading' => 'Видалити зі списку блокувань',
+        'remove_description' => 'Адреса знову отримуватиме листи, хоча на неї була відмова або скарга.',
     ],
     'preview' => [
         'navigation' => 'Перегляд листів',

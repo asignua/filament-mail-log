@@ -13,6 +13,7 @@ return [
         'sending' => 'Sending',
         'sent' => 'Sent',
         'failed' => 'Failed',
+        'suppressed' => 'Suppressed',
     ],
     'columns' => [
         'date' => 'Date',
@@ -32,6 +33,11 @@ return [
         'value' => 'Value',
         'resent_from' => 'Resent from',
         'resent' => 'Resent',
+        'delivery_status' => 'Delivery',
+        'delivery_status_at' => 'Delivery status at',
+        'event' => 'Event',
+        'provider' => 'Provider',
+        'detail' => 'Details',
     ],
     'filters' => [
         'recipient' => 'Recipient contains',
@@ -48,6 +54,8 @@ return [
     'sections' => [
         'error' => 'Error',
         'attachments' => 'Attachments',
+        'delivery_events' => 'Delivery events',
+        'delivery_events_help' => 'What the mail provider reported after the message left the application.',
     ],
     'actions' => [
         'load_images' => 'Load remote images',
@@ -78,6 +86,43 @@ return [
         'queued' => 'Message queued',
         'failed' => 'The message could not be resent',
         'times' => '{1} Resent once|[2,*] Resent :count times',
+    ],
+    'delivery_status' => [
+        'deferred' => 'Deferred',
+        'soft_bounced' => 'Soft bounce',
+        'delivered' => 'Delivered',
+        'opened' => 'Opened',
+        'clicked' => 'Clicked',
+        'rejected' => 'Rejected',
+        'bounced' => 'Bounced',
+        'complained' => 'Complained',
+    ],
+    'event_types' => [
+        'delivered' => 'Delivered',
+        'bounced' => 'Bounced',
+        'complained' => 'Complained',
+        'opened' => 'Opened',
+        'clicked' => 'Clicked',
+        'rejected' => 'Rejected',
+        'deferred' => 'Deferred',
+    ],
+    'bounce_types' => [
+        'hard' => 'hard',
+        'soft' => 'soft',
+    ],
+    'suppression_reasons' => [
+        'hard_bounce' => 'Hard bounce',
+        'complaint' => 'Complaint',
+    ],
+    'suppressions' => [
+        'navigation' => 'Suppressions',
+        'singular' => 'Suppressed address',
+        'plural' => 'Suppressions',
+        'email' => 'Address',
+        'reason' => 'Reason',
+        'remove' => 'Remove',
+        'remove_heading' => 'Remove from the suppression list',
+        'remove_description' => 'The address will receive mail again, even though it bounced or complained.',
     ],
     'preview' => [
         'navigation' => 'Mail preview',

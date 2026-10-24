@@ -1,0 +1,62 @@
+<?php
+
+declare(strict_types=1);
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function getConnection(): ?string
+    {
+        $connection = config('filament-mail-log.connection');
+
+        return is_string($connection) && $connection !== '' ? $connection : null;
+    }
+
+    private function table(): string
+    {
+        return (string) config('filament-mail-log.webhooks.events_table', 'mail_log_events');
+    }
+
+    public function up(): void
+    {
+        $schema = Schema::connection($this->getConnection());
+
+        if ($schema->hasTable($this->table())) {
+            return;
+        }
+
+        $logs = (string) config('filament-mail-log.table', 'mail_logs');
+
+        $schema->create($this->table(), function (Blueprint $table) use ($logs): void {
+            $table->id();
+            $table->unsignedBigInteger('mail_log_id');
+            // delivered, bounced, complained, opened, clicked, rejected, deferred.
+            $table->string('type', 16);
+            // hard / soft, only for `bounced`.
+            $table->string('bounce', 8)->nullable();
+            $table->string('provider', 32);
+            // The provider's own id of the event; the pair is unique, so a retried webhook is stored once.
+            // 191 characters on purpose: 32 + 191 utf8mb4 characters stay far below MySQL's 3072-byte key limit.
+            $table->string('provider_event_id', 191);
+            $table->string('recipient', 254)->nullable();
+            $table->text('detail')->nullable();
+            $table->json('payload')->nullable();
+            $table->timestamp('occurred_at');
+            $table->timestamp('created_at')->nullable();
+
+            $table->unique(['provider', 'provider_event_id'], 'ml_events_provider_uniq');
+            $table->index(['mail_log_id', 'occurred_at'], 'ml_events_log_idx');
+
+            // The events go with their message when the log is pruned.
+            $table->foreign('mail_log_id', 'ml_events_log_fk')->references('id')->on($logs)->cascadeOnDelete();
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::connection($this->getConnection())->dropIfExists($this->table());
+    }
+};

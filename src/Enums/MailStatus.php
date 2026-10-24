@@ -22,6 +22,11 @@ enum MailStatus: string implements HasColor, HasLabel
     case Sent = 'sent';
     case Failed = 'failed';
 
+    /**
+     * Never handed to the transport: every recipient is on the suppression list.
+     */
+    case Suppressed = 'suppressed';
+
     public function getLabel(): string
     {
         return __('filament-mail-log::filament-mail-log.status.'.$this->value);
@@ -34,6 +39,7 @@ enum MailStatus: string implements HasColor, HasLabel
             self::Sending => 'warning',
             self::Sent => 'success',
             self::Failed => 'danger',
+            self::Suppressed => 'warning',
         };
     }
 }

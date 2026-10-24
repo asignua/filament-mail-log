@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace Asignua\FilamentMailLog\Filament\Resources\MailLogs\Tables;
 
+use Asignua\FilamentMailLog\Enums\DeliveryStatus;
 use Asignua\FilamentMailLog\Enums\MailStatus;
 use Asignua\FilamentMailLog\Filament\Actions\ResendAction;
 use Asignua\FilamentMailLog\Models\MailLog;
 use Asignua\FilamentMailLog\Repositories\MailLogRepository;
 use Asignua\FilamentMailLog\Support\MailTypes;
+use Asignua\FilamentMailLog\Support\TrackingSchema;
 use Filament\Actions\ActionGroup;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\DatePicker;
@@ -38,6 +40,13 @@ class MailLogsTable
                 TextColumn::make('status')
                     ->label($t('columns.status'))
                     ->badge(),
+
+                // Needs the delivery migration; hidden (not broken) until the host ran it.
+                TextColumn::make('delivery_status')
+                    ->label($t('columns.delivery_status'))
+                    ->badge()
+                    ->placeholder('—')
+                    ->visible(fn (): bool => TrackingSchema::hasStatusColumn()),
 
                 TextColumn::make('recipient')
                     ->label($t('columns.recipient'))
@@ -78,6 +87,12 @@ class MailLogsTable
                     ->label($t('columns.status'))
                     ->multiple()
                     ->options(MailStatus::class),
+
+                SelectFilter::make('delivery_status')
+                    ->label($t('columns.delivery_status'))
+                    ->multiple()
+                    ->options(DeliveryStatus::class)
+                    ->visible(fn (): bool => TrackingSchema::hasStatusColumn()),
 
                 SelectFilter::make('type')
                     ->label($t('columns.type'))

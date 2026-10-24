@@ -2,6 +2,15 @@
 
 All notable changes to `asignua/filament-mail-log` are documented here.
 
+## Unreleased
+
+- New: **delivery tracking through provider webhooks** (Postmark, Mailgun, Amazon SES via SNS, Resend, SendGrid): delivered, bounced (hard / soft), complained, opened, clicked, rejected and deferred events are stored in `mail_log_events`, the latest meaningful one is kept on the message as `delivery_status` (with a precedence that makes late and out-of-order webhooks harmless). Signature checks per provider (403 on a bad one, replay window, SNS certificate and topic checks, automatic SNS subscription confirmation), idempotent on the provider event id, processed in the request. Off until a provider is enabled with its secret. Add your own provider by implementing `Webhooks\Contracts\WebhookDriver`.
+- New: outgoing mail is stamped with `X-Metadata-mail_log_id` (a Symfony `MetadataHeader`) while a provider is on, so events can be matched without the transport message id; `webhooks.stamp_headers` adds more header names for SMTP relays.
+- New: **suppression list** (`mail_log_suppressions`): hard bounces and complaints are recorded; with `suppression.enabled` suppressed addresses are dropped from outgoing mail and a message with no recipient left is not sent (status `suppressed`). "Suppressions" resource; removing is closed behind the `manageMailSuppressions` gate / `authorizeSuppressions()`.
+- New: delivery status badge column and filter in the table, a "Delivery events" timeline on the message page, English and Ukrainian translations.
+- **Needs three new migrations** (`add_delivery_status_to_mail_logs_table`, `create_mail_log_events_table`, `create_mail_log_suppressions_table`); publish and run them. Until then logging works as before and the new UI is hidden.
+- Config: `webhooks.*`, `suppression.*`.
+
 ## 1.1.0 - 2026-10-25
 
 - New: **Resend** action (message page and row menu): mails the stored copy again to the same or other recipients, with optional Cc/Bcc, validated addresses and a confirmation modal. Closed by default behind its own permission (`resendMailLog` gate or `MailLogPlugin::authorizeResend()`), separate from viewing the log.

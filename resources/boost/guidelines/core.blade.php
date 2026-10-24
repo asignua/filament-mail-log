@@ -7,3 +7,4 @@
 - Message previews for designers: `->previews(['Welcome' => fn () => new WelcomeMail($user)])`.
 - Never `return false` from a `MessageSending` listener of your own on behalf of the log, and never edit `MailLog` rows: the log is an audit trail.
 - Retention: `MAIL_LOG_RETENTION_DAYS` (default 90) and `mail-log:prune`; it is scheduled daily unless `MAIL_LOG_SCHEDULE=false`.
+- Delivery tracking is opt-in: enable a provider under `filament-mail-log.webhooks.providers` with its secret (Postmark, Mailgun, SES via SNS, Resend, SendGrid) and point its webhook at `/mail-log/webhooks/{provider}`; run the three delivery migrations. A hard bounce or complaint is recorded in `mail_log_suppressions`; `suppression.enabled` makes the package drop those recipients (the one case where it cancels a message). Removing a suppression needs the `manageMailSuppressions` gate or `->authorizeSuppressions()`.

@@ -10,6 +10,7 @@ use Asignua\FilamentMailLog\Models\MailLog;
 use Asignua\FilamentMailLog\Repositories\MailLogRepository;
 use Asignua\FilamentMailLog\Support\MailLogContext;
 use Asignua\FilamentMailLog\Support\MailRedactor;
+use Asignua\FilamentMailLog\Support\TrackingSchema;
 use Illuminate\Mail\Events\MessageSending;
 use Illuminate\Mail\Events\MessageSent;
 use Illuminate\Mail\Mailable;
@@ -24,6 +25,7 @@ use Illuminate\Queue\Events\JobQueued;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use ReflectionProperty;
+use Symfony\Component\Mailer\Header\MetadataHeader;
 use Symfony\Component\Mime\Address;
 use Symfony\Component\Mime\Email;
 use Symfony\Component\Mime\Part\DataPart;
@@ -143,6 +145,7 @@ final class LogOutgoingMail
             $log->save();
 
             $email->getHeaders()->addTextHeader($this->header(), $log->ulid);
+            $this->stamp($email, $log->ulid);
 
             $this->track($log->ulid);
         } catch (Throwable $e) {
@@ -265,6 +268,26 @@ final class LogOutgoingMail
     {
         if ($from !== null && MailLog::hasResendColumn()) {
             $log->resent_from_id = $from;
+        }
+    }
+
+    /**
+     * Gives the provider something to echo back in its webhooks. A MetadataHeader is understood by the Postmark,
+     * Mailgun, SendGrid, Resend and SES API transports (metadata / variables / custom args / tags); other
+     * transports send it as a plain `X-Metadata-mail_log_id` header. Only when a provider is switched on.
+     */
+    private function stamp(Email $email, string $ulid): void
+    {
+        if (!(bool) config('filament-mail-log.webhooks.stamp_metadata', true) || !TrackingSchema::anyProviderEnabled()) {
+            return;
+        }
+
+        $email->getHeaders()->add(new MetadataHeader('mail_log_id', $ulid));
+
+        foreach ((array) config('filament-mail-log.webhooks.stamp_headers', []) as $name) {
+            if (is_string($name) && $name !== '') {
+                $email->getHeaders()->addTextHeader($name, $ulid);
+            }
         }
     }
 

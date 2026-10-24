@@ -1,0 +1,51 @@
+<?php
+
+declare(strict_types=1);
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function getConnection(): ?string
+    {
+        $connection = config('filament-mail-log.connection');
+
+        return is_string($connection) && $connection !== '' ? $connection : null;
+    }
+
+    private function table(): string
+    {
+        return (string) config('filament-mail-log.suppression.table', 'mail_log_suppressions');
+    }
+
+    public function up(): void
+    {
+        $schema = Schema::connection($this->getConnection());
+
+        if ($schema->hasTable($this->table())) {
+            return;
+        }
+
+        $schema->create($this->table(), function (Blueprint $table): void {
+            $table->id();
+            // Lower case. An address is suppressed once.
+            $table->string('email', 254);
+            // hard_bounce / complaint.
+            $table->string('reason', 16);
+            $table->string('provider', 32)->nullable();
+            // The message that caused it. No foreign key: the log is pruned on its own schedule.
+            $table->unsignedBigInteger('mail_log_id')->nullable();
+            $table->string('detail', 500)->nullable();
+            $table->timestamps();
+
+            $table->unique('email', 'ml_suppressions_email_uniq');
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::connection($this->getConnection())->dropIfExists($this->table());
+    }
+};

@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace Asignua\FilamentMailLog;
 
 use Asignua\FilamentMailLog\Commands\PruneCommand;
+use Asignua\FilamentMailLog\Http\Controllers\WebhookController;
+use Asignua\FilamentMailLog\Listeners\DropSuppressedRecipients;
 use Asignua\FilamentMailLog\Listeners\LogOutgoingMail;
+use Asignua\FilamentMailLog\Repositories\DeliveryRepository;
 use Asignua\FilamentMailLog\Repositories\MailLogRepository;
 use Asignua\FilamentMailLog\Support\MailLogContext;
 use Illuminate\Console\Scheduling\Schedule;
@@ -17,6 +20,7 @@ use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Queue\Events\JobProcessed;
 use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Queue\Events\JobQueued;
+use Illuminate\Support\Facades\Route;
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
 
@@ -31,7 +35,13 @@ class MailLogServiceProvider extends PackageServiceProvider
             ->hasConfigFile()
             ->hasTranslations()
             ->hasViews()
-            ->hasMigrations(['create_mail_logs_table', 'add_resent_from_id_to_mail_logs_table'])
+            ->hasMigrations([
+                'create_mail_logs_table',
+                'add_resent_from_id_to_mail_logs_table',
+                'add_delivery_status_to_mail_logs_table',
+                'create_mail_log_events_table',
+                'create_mail_log_suppressions_table',
+            ])
             ->hasCommand(PruneCommand::class);
     }
 
@@ -39,6 +49,7 @@ class MailLogServiceProvider extends PackageServiceProvider
     {
         $this->app->singleton(MailLogRepository::class);
         $this->app->singleton(LogOutgoingMail::class);
+        $this->app->singleton(DeliveryRepository::class);
     }
 
     public function packageBooted(): void
@@ -48,6 +59,8 @@ class MailLogServiceProvider extends PackageServiceProvider
 
         $this->callAfterResolving(Dispatcher::class, function (Dispatcher $events): void {
             $events->listen(MessageSending::class, [LogOutgoingMail::class, 'sending']);
+            // Order matters: the suppression listener needs the row and the correlation header of the first one.
+            $events->listen(MessageSending::class, [DropSuppressedRecipients::class, 'handle']);
             $events->listen(MessageSent::class, [LogOutgoingMail::class, 'sent']);
             $events->listen(JobQueued::class, [LogOutgoingMail::class, 'queued']);
             $events->listen(JobProcessing::class, [LogOutgoingMail::class, 'jobProcessing']);
@@ -55,6 +68,8 @@ class MailLogServiceProvider extends PackageServiceProvider
             $events->listen(JobExceptionOccurred::class, [LogOutgoingMail::class, 'jobExceptionOccurred']);
             $events->listen(JobFailed::class, [LogOutgoingMail::class, 'jobFailed']);
         });
+
+        $this->registerWebhookRoute();
 
         $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
             if (!(bool) config('filament-mail-log.schedule.enabled', true)) {
@@ -65,5 +80,25 @@ class MailLogServiceProvider extends PackageServiceProvider
 
             $schedule->command('mail-log:prune')->dailyAt(is_string($time) ? $time : '03:40');
         });
+    }
+
+    /**
+     * POST {path}/{provider}. A provider that is not enabled answers 404 from the controller; an empty `path`
+     * does not register the route at all. No `web` group: no session, no CSRF, the signature is the credential.
+     */
+    private function registerWebhookRoute(): void
+    {
+        $path = config('filament-mail-log.webhooks.path');
+
+        if (!is_string($path) || trim($path, '/') === '' || $this->app->routesAreCached()) {
+            return;
+        }
+
+        $middleware = config('filament-mail-log.webhooks.middleware', []);
+
+        Route::post(trim($path, '/').'/{provider}', WebhookController::class)
+            ->middleware(is_array($middleware) ? $middleware : [])
+            ->where('provider', '[a-z0-9_-]+')
+            ->name('filament-mail-log.webhook');
     }
 }

@@ -7,6 +7,7 @@ namespace Asignua\FilamentMailLog\Repositories;
 use Asignua\FilamentMailLog\Enums\MailStatus;
 use Asignua\FilamentMailLog\Models\MailLog;
 use Asignua\FilamentMailLog\Support\MailRedactor;
+use Asignua\FilamentMailLog\Support\TrackingSchema;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 
@@ -59,6 +60,18 @@ class MailLogRepository
             'message_id' => $messageId,
             'error' => null,
             'sent_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
+    /**
+     * The message was cancelled before the transport: every recipient is suppressed.
+     */
+    public function markSuppressed(string $ulid, string $reason): void
+    {
+        $this->query()->where('ulid', $ulid)->update([
+            'status' => MailStatus::Suppressed->value,
+            'error' => MailRedactor::clean(mb_strimwidth($reason, 0, 1000, '…')),
             'updated_at' => now(),
         ]);
     }
@@ -123,6 +136,11 @@ class MailLogRepository
 
             if ($ids === []) {
                 break;
+            }
+
+            // Explicitly, not only through the foreign key: a database that does not enforce it would keep orphans.
+            if (TrackingSchema::hasEventsTable()) {
+                app(DeliveryRepository::class)->deleteEventsOf($ids);
             }
 
             $deleted += $this->query()->whereIn('id', $ids)->delete();

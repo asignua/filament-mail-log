@@ -6,6 +6,7 @@ namespace Asignua\FilamentMailLog;
 
 use Asignua\FilamentMailLog\Filament\Pages\MailPreview;
 use Asignua\FilamentMailLog\Filament\Resources\MailLogs\MailLogResource;
+use Asignua\FilamentMailLog\Filament\Resources\Suppressions\MailSuppressionResource;
 use BackedEnum;
 use Closure;
 use Filament\Contracts\Plugin;
@@ -38,7 +39,14 @@ class MailLogPlugin implements Plugin
 
     protected bool|Closure|null $authorize = null;
 
+    /** The gate ability consulted for removing an address from the suppression list when no `authorizeSuppressions()` was given. */
+    public const string SUPPRESSIONS_ABILITY = 'manageMailSuppressions';
+
     protected bool|Closure|null $authorizeResend = null;
+
+    protected bool|Closure|null $authorizeSuppressions = null;
+
+    protected bool $suppressionResource = true;
 
     protected bool $resource = true;
 
@@ -101,6 +109,28 @@ class MailLogPlugin implements Plugin
     public function authorizeResend(bool|Closure|null $callback): static
     {
         $this->authorizeResend = $callback;
+
+        return $this;
+    }
+
+    /**
+     * Who may REMOVE an address from the suppression list (seeing the list needs only access to the log). Removing
+     * mails an address that bounced or complained again, so it is closed by default: with no callback the answer
+     * comes from the `manageMailSuppressions` gate ability and, when it is not defined, from NOBODY.
+     */
+    public function authorizeSuppressions(bool|Closure|null $callback): static
+    {
+        $this->authorizeSuppressions = $callback;
+
+        return $this;
+    }
+
+    /**
+     * Show the "Suppressions" resource (on by default; it still needs the suppressions table).
+     */
+    public function suppressionResource(bool $condition = true): static
+    {
+        $this->suppressionResource = $condition;
 
         return $this;
     }
@@ -194,6 +224,19 @@ class MailLogPlugin implements Plugin
         return Gate::has(static::RESEND_ABILITY) && Gate::allows(static::RESEND_ABILITY);
     }
 
+    public function canManageSuppressions(): bool
+    {
+        if (!$this->canAccess()) {
+            return false;
+        }
+
+        if ($this->authorizeSuppressions !== null) {
+            return $this->authorizeSuppressions instanceof Closure ? (bool) app()->call($this->authorizeSuppressions) : $this->authorizeSuppressions;
+        }
+
+        return Gate::has(static::SUPPRESSIONS_ABILITY) && Gate::allows(static::SUPPRESSIONS_ABILITY);
+    }
+
     public function getNavigationGroup(): string|UnitEnum|null
     {
         return value($this->navigationGroup);
@@ -236,6 +279,10 @@ class MailLogPlugin implements Plugin
     {
         if ($this->resource) {
             $panel->resources([MailLogResource::class]);
+        }
+
+        if ($this->suppressionResource) {
+            $panel->resources([MailSuppressionResource::class]);
         }
 
         if ($this->previewPage) {

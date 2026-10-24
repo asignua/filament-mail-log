@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Asignua\FilamentMailLog\Tests;
 
 use Asignua\FilamentMailLog\MailLogServiceProvider;
+use Asignua\FilamentMailLog\Support\TrackingSchema;
 use BladeUI\Heroicons\BladeHeroiconsServiceProvider;
 use BladeUI\Icons\BladeIconsServiceProvider;
 use Filament\Actions\ActionsServiceProvider;
@@ -31,6 +32,9 @@ abstract class TestCase extends Orchestra
     protected function setUp(): void
     {
         parent::setUp();
+
+        // Static schema probes survive between tests (and apps); a test that drops a table must not leak into the next.
+        TrackingSchema::forget();
 
         $this->actingAs(User::factory()->create());
         Filament::setCurrentPanel('admin');
@@ -74,5 +78,8 @@ abstract class TestCase extends Orchestra
         // The plugin's migration is a publishable stub: run it the way a host that published it would.
         (include __DIR__.'/../database/migrations/create_mail_logs_table.php.stub')->up();
         (include __DIR__.'/../database/migrations/add_resent_from_id_to_mail_logs_table.php.stub')->up();
+        (include __DIR__.'/../database/migrations/add_delivery_status_to_mail_logs_table.php.stub')->up();
+        (include __DIR__.'/../database/migrations/create_mail_log_events_table.php.stub')->up();
+        (include __DIR__.'/../database/migrations/create_mail_log_suppressions_table.php.stub')->up();
     }
 }

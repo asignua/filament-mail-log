@@ -1,0 +1,53 @@
+<?php
+
+declare(strict_types=1);
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function getConnection(): ?string
+    {
+        $connection = config('filament-mail-log.connection');
+
+        return is_string($connection) && $connection !== '' ? $connection : null;
+    }
+
+    private function table(): string
+    {
+        return (string) config('filament-mail-log.table', 'mail_logs');
+    }
+
+    public function up(): void
+    {
+        $schema = Schema::connection($this->getConnection());
+
+        if ($schema->hasColumn($this->table(), 'delivery_status')) {
+            return;
+        }
+
+        $schema->table($this->table(), function (Blueprint $table): void {
+            // The latest meaningful status a provider webhook reported (see DeliveryStatus for the precedence).
+            $table->string('delivery_status', 16)->nullable();
+            $table->timestamp('delivery_status_at')->nullable();
+
+            $table->index('delivery_status', 'ml_delivery_status_idx');
+        });
+    }
+
+    public function down(): void
+    {
+        $schema = Schema::connection($this->getConnection());
+
+        if (!$schema->hasColumn($this->table(), 'delivery_status')) {
+            return;
+        }
+
+        $schema->table($this->table(), function (Blueprint $table): void {
+            $table->dropIndex('ml_delivery_status_idx');
+            $table->dropColumn(['delivery_status', 'delivery_status_at']);
+        });
+    }
+};

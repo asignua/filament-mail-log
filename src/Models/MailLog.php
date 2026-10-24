@@ -5,9 +5,12 @@ declare(strict_types=1);
 namespace Asignua\FilamentMailLog\Models;
 
 use Asignua\FilamentMailLog\Casts\UnescapedJson;
+use Asignua\FilamentMailLog\Enums\DeliveryStatus;
 use Asignua\FilamentMailLog\Enums\MailStatus;
 use Asignua\FilamentMailLog\Support\LogConnection;
+use Asignua\FilamentMailLog\Support\TrackingSchema;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\Schema;
 use Throwable;
 
@@ -35,6 +38,8 @@ use Throwable;
  * @property list<array{name: ?string, mime: string, size: ?int}>|null $attachments
  * @property array<string, list<string>>|null $headers
  * @property int|null $resent_from_id
+ * @property DeliveryStatus|null $delivery_status
+ * @property \Illuminate\Support\Carbon|null $delivery_status_at
  * @property \Illuminate\Support\Carbon|null $queued_at
  * @property \Illuminate\Support\Carbon|null $sent_at
  * @property \Illuminate\Support\Carbon|null $failed_at
@@ -83,12 +88,25 @@ class MailLog extends Model
     public static function forgetColumnCache(): void
     {
         self::$columnCache = [];
+        TrackingSchema::forget();
+    }
+
+    /**
+     * Provider events of this message, oldest first.
+     *
+     * @return HasMany<MailLogEvent, $this>
+     */
+    public function events(): HasMany
+    {
+        return $this->hasMany(MailLogEvent::class, 'mail_log_id')->orderBy('occurred_at')->orderBy('id');
     }
 
     protected function casts(): array
     {
         return [
             'status' => MailStatus::class,
+            'delivery_status' => DeliveryStatus::class,
+            'delivery_status_at' => 'datetime',
             'recipients' => UnescapedJson::class,
             'attachments' => UnescapedJson::class,
             'headers' => UnescapedJson::class,

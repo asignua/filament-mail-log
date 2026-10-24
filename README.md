@@ -97,6 +97,7 @@ mail notification is recorded.
 | `sending` | handed to the mailer, the transport has not answered |
 | `sent` | the transport accepted it (stores the message id) |
 | `failed` | the job threw, or the transport threw; the error is stored |
+| `suppressed` | every recipient is on the [suppression list](#suppression-list); nothing was sent |
 
 The list filters by status, type, recipient (To/Cc/Bcc), period and text in the body. The view page has
 **Details**, **HTML** (sandboxed iframe), **Plain text** and **Headers** tabs.
@@ -129,6 +130,67 @@ or to other recipients. It opens a confirmation modal with the original **To** a
 exists) and keep `add_resent_from_id_to_mail_logs_table`, then `php artisan migrate`. Until it ran, logging keeps working
 and the Resend action stays hidden.
 
+### Delivery tracking (provider webhooks)
+
+`sent` only means the transport accepted the message. With a provider webhook the log also learns what happened
+afterwards: **delivered, bounced (hard / soft), complained, opened, clicked, rejected, deferred**. Each event is
+stored in `mail_log_events` and the newest meaningful one is copied to the message as `delivery_status`
+(a badge column and a filter in the table, a "Delivery events" timeline on the message page).
+
+Providers: **Postmark, Mailgun, Amazon SES (through SNS), Resend, SendGrid**. Everything is off until you switch a
+provider on and give it its secret. A webhook for a provider that is off answers `404`; a missing, wrong or stale
+signature answers `403`.
+
+1. Publish and run the three new migrations (`add_delivery_status_to_mail_logs_table`, `create_mail_log_events_table`,
+   `create_mail_log_suppressions_table`). Until they ran, logging and the panel work as before and the new UI is hidden.
+2. Enable the provider (`.env` or the `webhooks.providers` config) and point the provider's webhook at
+   `https://your-app.test/mail-log/webhooks/{provider}` (`webhooks.path`; an empty path does not register the route).
+   The route has no session and no CSRF; add rate limits with `webhooks.middleware` if you want them.
+
+| Provider | URL ends with | Env | Where to paste what |
+| --- | --- | --- | --- |
+| Postmark | `/postmark` | `MAIL_LOG_POSTMARK_ENABLED`, `_USERNAME`, `_PASSWORD` | Server > Webhooks: URL `https://USER:PASSWORD@your-app.test/mail-log/webhooks/postmark` (Postmark does not sign, it sends Basic auth). Tick Delivery, Bounce, Spam complaint, Open, Click |
+| Mailgun | `/mailgun` | `MAIL_LOG_MAILGUN_ENABLED`, `_SIGNING_KEY` | Sending > Webhooks: add the URL for each event; the key is the "HTTP webhook signing key". JSON webhooks only |
+| Amazon SES | `/ses` | `MAIL_LOG_SES_ENABLED`, `MAIL_LOG_SES_TOPIC_ARNS` | SES > Configuration set > Event destination > SNS topic; SNS > create an HTTPS subscription to the URL. The plugin confirms the subscription itself. `TOPIC_ARNS` (comma separated) is required: a valid SNS signature only proves the message came from some SNS topic |
+| Resend | `/resend` | `MAIL_LOG_RESEND_WEBHOOK_ENABLED`, `_SECRET` | Webhooks > Add endpoint; the secret is the "Signing secret" (`whsec_...`) |
+| SendGrid | `/sendgrid` | `MAIL_LOG_SENDGRID_ENABLED`, `_PUBLIC_KEY` | Settings > Mail Settings > Event Webhook, switch on Signature Verification and paste the "Verification key" |
+
+**How a webhook finds its message.** When a provider is on, every outgoing message gets `X-Metadata-mail_log_id`
+(a Symfony `MetadataHeader` carrying the row's ULID) next to the usual `X-Mail-Log-Id`, and the plugin stores the
+transport's message id after sending. An event is matched by the ULID first (Postmark `Metadata`, Mailgun `user-variables`,
+SendGrid custom args, Resend `tags`, SES `mail.tags` or the echoed header), then by the provider message id
+(Postmark `MessageID`, Mailgun `message-id`, SES `mail.messageId`, Resend `email_id`, SendGrid `sg_message_id` / `smtp-id`).
+Mail sent through the **provider's API mailer** (the Symfony Postmark / Mailgun / SendGrid / Resend / SES bridges) is matched
+both ways. Over **plain SMTP** the metadata header is not turned into provider metadata, so only the message id can match,
+and not every provider echoes the SMTP `Message-ID`; some relays read their own header, list it in
+`webhooks.stamp_headers` (e.g. `['X-PM-Metadata-mail_log_id']` for Postmark SMTP). `webhooks.stamp_metadata=false` turns the
+extra header off. Events nobody can match are acknowledged and dropped.
+
+**Status precedence.** Webhooks arrive late, twice and out of order, so the stored status only moves forward:
+`deferred < soft bounce < delivered < opened < clicked < rejected < hard bounce < complaint`. A "delivered" that arrives after a
+hard bounce does not hide it; a soft bounce followed by a successful retry becomes "delivered". The mail log status
+(`queued / sending / sent / failed`) is not touched. A retried webhook is stored once (unique `provider` + provider event id).
+
+Webhooks are handled in the request, not queued: a few indexed queries, the provider retries on any non-2xx, and tracking
+should not depend on a queue worker. Stored payloads are cleaned: signatures, tokens, SNS URLs are dropped and signed links
+are redacted (`webhooks.store_payload=false` keeps no payload). Events go with their message when `mail-log:prune` deletes it.
+
+### Suppression list
+
+A **hard bounce** or a **complaint** puts the address in `mail_log_suppressions` (even when the message is not in this log:
+the provider confirmed the address is dead). Recording is on by default (`suppression.record`) and visible in the
+**Suppressions** resource. Nothing is blocked until you opt in:
+
+```php
+// .env: MAIL_LOG_SUPPRESSION=true
+```
+
+With `suppression.enabled`, a `MessageSending` listener removes suppressed addresses from To / Cc / Bcc, and a message left
+with nobody is **not sent**: its row gets the status `suppressed`. (A partly cleaned message is logged as sent with its
+original recipients.) If the lookup itself fails the mail is sent. Removing an address (single or bulk) is closed by default and has
+its own permission: `Gate::define('manageMailSuppressions', ...)` or `MailLogPlugin::make()->authorizeSuppressions(fn () => ...)`.
+`->suppressionResource(false)` hides the resource.
+
 ### Mail preview for designers
 
 Register the messages and the page appears (same access rule as the log):
@@ -152,7 +214,7 @@ marks `sending` rows nobody confirmed for `stale_after_minutes` as failed. It is
 
 ## Configuration
 
-Fluent setters on `MailLogPlugin`: `authorize()`, `authorizeResend()`, `resource()`, `previews()`, `previewPage()`, `previewLocales()`,
+Fluent setters on `MailLogPlugin`: `authorize()`, `authorizeResend()`, `authorizeSuppressions()`, `suppressionResource()`, `resource()`, `previews()`, `previewPage()`, `previewLocales()`,
 `navigationGroup()`, `navigationSort()`, `navigationIcon()`.
 
 Everything else is in the config (`php artisan vendor:publish --tag=filament-mail-log-config`):
@@ -174,6 +236,12 @@ Everything else is in the config (`php artisan vendor:publish --tag=filament-mai
 | `resend.mailer` | `null` (`MAIL_LOG_RESEND_MAILER`) | mailer for a resend; `null` = the default mailer |
 | `resend.queue` | `false` (`MAIL_LOG_RESEND_QUEUE`) | queue the resend instead of sending it in the request (needs a worker) |
 | `isolate_connection` | `true` | write the log on a separate connection (see Gotchas) |
+| `webhooks.path`, `webhooks.middleware` | `mail-log/webhooks`, `[]` | the webhook route (`POST {path}/{provider}`); empty path = no route |
+| `webhooks.providers.*` | all off | `enabled` + secret per provider; add your own driver class |
+| `webhooks.tolerance`, `webhooks.store_payload` | `300`, `true` | replay window of signed timestamps; keep cleaned payloads |
+| `webhooks.stamp_metadata`, `webhooks.stamp_headers` | `true`, `[]` | correlation headers added while a provider is on |
+| `webhooks.events_table`, `suppression.table` | `mail_log_events`, `mail_log_suppressions` | table names |
+| `suppression.record`, `suppression.enabled` | `true`, `false` | record bounces / complaints; actually drop suppressed recipients |
 
 ### Redaction
 
@@ -198,7 +266,7 @@ with `[redaction failed]`. Add the parameters of your own signed links to the li
   (look for `filament-mail-log: could not record` in your log).
 - **A row stays `sending`.** The transport threw outside a queue job and the process was killed, or a worker was
   killed by its timeout. `mail-log:prune` fails such rows after `stale_after_minutes`.
-- **The recipient sees an `X-Mail-Log-Id` header.** It is how `MessageSending` is tied to `MessageSent` (Symfony
+- **The recipient sees an `X-Mail-Log-Id` header** (and, while a webhook provider is on and the transport does not turn it into provider metadata, `X-Metadata-mail_log_id`). It is how `MessageSending` is tied to `MessageSent` (Symfony
   clones the message). It is a random ULID and carries nothing; rename it with the `header` config.
 - **Stored mail is still personal data.** Redaction removes secrets, not names or order contents. Use
   `body.store=false` or a short `retention_days` where that matters.
