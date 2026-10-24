@@ -32,6 +32,9 @@ class MailSuppressionResource extends Resource
 
     protected static ?string $recordTitleAttribute = 'email';
 
+    // Next to /mail-logs; the namespace-derived slug would be /suppressions/mail-suppressions.
+    protected static ?string $slug = 'mail-suppressions';
+
     public static function canViewAny(): bool
     {
         return MailLogPlugin::isActive() && MailLogPlugin::get()->canAccess() && TrackingSchema::hasSuppressionsTable();
