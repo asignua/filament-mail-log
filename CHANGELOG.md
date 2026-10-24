@@ -2,7 +2,7 @@
 
 All notable changes to `asignua/filament-mail-log` are documented here.
 
-## Unreleased
+## 1.1.0 - 2026-10-25
 
 - New: **Resend** action (message page and row menu): mails the stored copy again to the same or other recipients, with optional Cc/Bcc, validated addresses and a confirmation modal. Closed by default behind its own permission (`resendMailLog` gate or `MailLogPlugin::authorizeResend()`), separate from viewing the log.
 - The modal warns when secrets were removed from the stored copy (signed links will be broken) or the body was cut, and says that attachments are not resent (only their names are stored).
