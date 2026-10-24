@@ -31,7 +31,7 @@ class MailLogServiceProvider extends PackageServiceProvider
             ->hasConfigFile()
             ->hasTranslations()
             ->hasViews()
-            ->hasMigration('create_mail_logs_table')
+            ->hasMigrations(['create_mail_logs_table', 'add_resent_from_id_to_mail_logs_table'])
             ->hasCommand(PruneCommand::class);
     }
 

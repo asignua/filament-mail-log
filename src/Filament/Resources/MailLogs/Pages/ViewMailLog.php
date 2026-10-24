@@ -4,12 +4,13 @@ declare(strict_types=1);
 
 namespace Asignua\FilamentMailLog\Filament\Resources\MailLogs\Pages;
 
+use Asignua\FilamentMailLog\Filament\Actions\ResendAction;
 use Asignua\FilamentMailLog\Filament\Resources\MailLogs\MailLogResource;
 use Filament\Actions\Action;
 use Filament\Resources\Pages\ViewRecord;
 
 /**
- * The log is read-only. The only header action is a per-view switch for remote images in the preview.
+ * The log is read-only. Header actions: a per-view switch for remote images in the preview and the (separately authorized) "Resend".
  */
 class ViewMailLog extends ViewRecord
 {
@@ -23,6 +24,7 @@ class ViewMailLog extends ViewRecord
         $t = static fn (string $key): string => __('filament-mail-log::filament-mail-log.'.$key);
 
         return [
+            ResendAction::make(),
             Action::make('remoteImages')
                 ->label(fn (): string => $this->remoteImages ? $t('actions.block_images') : $t('actions.load_images'))
                 ->icon(fn (): string => $this->remoteImages ? 'heroicon-o-eye-slash' : 'heroicon-o-photo')

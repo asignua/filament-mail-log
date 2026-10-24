@@ -73,5 +73,6 @@ abstract class TestCase extends Orchestra
 
         // The plugin's migration is a publishable stub: run it the way a host that published it would.
         (include __DIR__.'/../database/migrations/create_mail_logs_table.php.stub')->up();
+        (include __DIR__.'/../database/migrations/add_resent_from_id_to_mail_logs_table.php.stub')->up();
     }
 }

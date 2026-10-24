@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Asignua\FilamentMailLog\Listeners;
 
 use Asignua\FilamentMailLog\Enums\MailStatus;
+use Asignua\FilamentMailLog\Mail\ResentMail;
 use Asignua\FilamentMailLog\Models\MailLog;
 use Asignua\FilamentMailLog\Repositories\MailLogRepository;
 use Asignua\FilamentMailLog\Support\MailLogContext;
@@ -77,6 +78,7 @@ final class LogOutgoingMail
             $log->subject = MailRedactor::clean($row['subject']);
             $log->recipient = $row['to'][0] ?? '';
             $log->recipients = ['to' => $row['to'], 'cc' => $row['cc'], 'bcc' => $row['bcc']];
+            $this->linkResend($log, $event->job instanceof SendQueuedMailable && $event->job->mailable instanceof ResentMail ? $event->job->mailable->mailLogResentFrom : null);
             $log->save();
         } catch (Throwable $e) {
             $this->warn('queued', $e);
@@ -120,6 +122,7 @@ final class LogOutgoingMail
             $log->recipients = ['to' => $to, 'cc' => $cc, 'bcc' => $bcc];
             $log->attachments = $this->attachments($email);
             $log->headers = $this->headers($email);
+            $this->linkResend($log, ($data['__laravel_mailable'] ?? null) === ResentMail::class && is_int($data['mailLogResentFrom'] ?? null) ? $data['mailLogResentFrom'] : null);
             $log->error = null;
             $log->redacted = false;
             $log->truncated = false;
@@ -251,6 +254,17 @@ final class LogOutgoingMail
             );
         } catch (Throwable $e) {
             $this->warn('terminate', $e);
+        }
+    }
+
+    /**
+     * Marks the row as a resend of another one. Only when the column exists: an unknown column would make the
+     * INSERT fail and the row (swallowed by RULE 1) would be lost.
+     */
+    private function linkResend(MailLog $log, ?int $from): void
+    {
+        if ($from !== null && MailLog::hasResendColumn()) {
+            $log->resent_from_id = $from;
         }
     }
 

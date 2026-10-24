@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Asignua\FilamentMailLog\Filament\Resources\MailLogs\Schemas;
 
 use Asignua\FilamentMailLog\Enums\MailStatus;
+use Asignua\FilamentMailLog\Filament\Resources\MailLogs\MailLogResource;
 use Asignua\FilamentMailLog\Models\MailLog;
+use Asignua\FilamentMailLog\Support\MailResender;
 use Asignua\FilamentMailLog\Support\MailTypes;
 use Filament\Infolists\Components\IconEntry;
 use Filament\Infolists\Components\KeyValueEntry;
@@ -47,6 +49,15 @@ class MailLogInfolist
                             TextEntry::make('failed_at')->label($t('columns.failed_at'))->dateTime()->placeholder('—'),
                             TextEntry::make('message_id')->label($t('columns.message_id'))->placeholder('—')->copyable()->fontFamily('mono'),
                             IconEntry::make('redacted')->label($t('columns.redacted'))->boolean(),
+                            TextEntry::make('resent_from_id')
+                                ->label($t('columns.resent_from'))
+                                ->formatStateUsing(fn (int $state): string => '#'.$state)
+                                ->url(fn (MailLog $record): ?string => $record->resent_from_id === null ? null : MailLogResource::getUrl('view', ['record' => $record->resent_from_id]))
+                                ->visible(fn (MailLog $record): bool => $record->resent_from_id !== null),
+                            TextEntry::make('resent_count')
+                                ->label($t('columns.resent'))
+                                ->state(fn (MailLog $record): string => trans_choice($t('resend.times'), app(MailResender::class)->resentCount($record)))
+                                ->visible(fn (MailLog $record): bool => app(MailResender::class)->resentCount($record) > 0),
                         ]),
 
                         Section::make($t('sections.error'))

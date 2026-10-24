@@ -26,6 +26,11 @@ class MailLogRepository
         return MailLog::query();
     }
 
+    public function countResends(int $id): int
+    {
+        return $this->query()->where('resent_from_id', $id)->count();
+    }
+
     public function findQueuedByJob(string $jobId, ?string $connection, ?string $uuid = null): ?MailLog
     {
         return $this->queuedForJob($jobId, $connection, $uuid)->latest('id')->first();

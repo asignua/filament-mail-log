@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Asignua\FilamentMailLog\Filament\Resources\MailLogs\Tables;
 
 use Asignua\FilamentMailLog\Enums\MailStatus;
+use Asignua\FilamentMailLog\Filament\Actions\ResendAction;
 use Asignua\FilamentMailLog\Models\MailLog;
 use Asignua\FilamentMailLog\Repositories\MailLogRepository;
 use Asignua\FilamentMailLog\Support\MailTypes;
@@ -61,6 +62,13 @@ class MailLogsTable
                     ->boolean()
                     ->toggleable(isToggledHiddenByDefault: true),
 
+                TextColumn::make('resent_from_id')
+                    ->label($t('columns.resent_from'))
+                    ->formatStateUsing(fn (?int $state): string => '#'.$state)
+                    ->placeholder('—')
+                    ->alignEnd()
+                    ->toggleable(isToggledHiddenByDefault: true),
+
                 TextColumn::make('mailer')
                     ->label($t('columns.mailer'))
                     ->toggleable(isToggledHiddenByDefault: true),
@@ -113,7 +121,7 @@ class MailLogsTable
                         )),
             ])
             ->recordActions([
-                ActionGroup::make([ViewAction::make()]),
+                ActionGroup::make([ViewAction::make(), ResendAction::make()]),
             ])
             ->defaultSort('id', 'desc')
             ->paginated([25, 50, 100]);

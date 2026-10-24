@@ -8,6 +8,8 @@ use Asignua\FilamentMailLog\Casts\UnescapedJson;
 use Asignua\FilamentMailLog\Enums\MailStatus;
 use Asignua\FilamentMailLog\Support\LogConnection;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Schema;
+use Throwable;
 
 /**
  * One outgoing message. Written by {@see \Asignua\FilamentMailLog\Listeners\LogOutgoingMail}, read by the panel.
@@ -32,6 +34,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property bool $truncated
  * @property list<array{name: ?string, mime: string, size: ?int}>|null $attachments
  * @property array<string, list<string>>|null $headers
+ * @property int|null $resent_from_id
  * @property \Illuminate\Support\Carbon|null $queued_at
  * @property \Illuminate\Support\Carbon|null $sent_at
  * @property \Illuminate\Support\Carbon|null $failed_at
@@ -53,6 +56,35 @@ class MailLog extends Model
         return LogConnection::name();
     }
 
+    /** @var array<string, bool> */
+    private static array $columnCache = [];
+
+    /**
+     * Whether the `resent_from_id` column exists. A host that updated the package but has not published and run
+     * the new migration yet must keep logging: writing an unknown column would lose the row (the listener
+     * swallows errors by design), so every resend feature checks this first.
+     */
+    public static function hasResendColumn(): bool
+    {
+        $instance = new self;
+        $key = ($instance->getConnectionName() ?? '').'.'.$instance->getTable();
+
+        if (!array_key_exists($key, self::$columnCache)) {
+            try {
+                self::$columnCache[$key] = Schema::connection($instance->getConnectionName())->hasColumn($instance->getTable(), 'resent_from_id');
+            } catch (Throwable) {
+                return false;
+            }
+        }
+
+        return self::$columnCache[$key];
+    }
+
+    public static function forgetColumnCache(): void
+    {
+        self::$columnCache = [];
+    }
+
     protected function casts(): array
     {
         return [
@@ -60,6 +92,7 @@ class MailLog extends Model
             'recipients' => UnescapedJson::class,
             'attachments' => UnescapedJson::class,
             'headers' => UnescapedJson::class,
+            'resent_from_id' => 'integer',
             'redacted' => 'boolean',
             'truncated' => 'boolean',
             'queued_at' => 'datetime',

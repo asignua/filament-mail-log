@@ -138,6 +138,24 @@ return [
      */
     'types' => [],
 
+    'resend' => [
+        /*
+         * The "Resend" action (still closed until the `resendMailLog` gate or `->authorizeResend()` allows it).
+         */
+        'enabled' => env('MAIL_LOG_RESEND', true),
+
+        /*
+         * Mailer used for a resend. null = the application's default mailer (not the mailer of the original,
+         * which may be gone or point at a transactional service you do not want a manual resend to use).
+         */
+        'mailer' => env('MAIL_LOG_RESEND_MAILER'),
+
+        /*
+         * Push the resend to the queue instead of sending it in the request. Needs a running worker.
+         */
+        'queue' => env('MAIL_LOG_RESEND_QUEUE', false),
+    ],
+
     'preview' => [
         /*
          * Content-Security-Policy of the sandboxed iframe that shows a message. The iframe has no

@@ -33,7 +33,12 @@ class MailLogPlugin implements Plugin
     /** The gate ability consulted when no `authorize()` was given. */
     public const string ABILITY = 'viewMailLog';
 
+    /** The gate ability consulted for "Resend" when no `authorizeResend()` was given. */
+    public const string RESEND_ABILITY = 'resendMailLog';
+
     protected bool|Closure|null $authorize = null;
+
+    protected bool|Closure|null $authorizeResend = null;
 
     protected bool $resource = true;
 
@@ -83,6 +88,19 @@ class MailLogPlugin implements Plugin
     public function authorize(bool|Closure|null $callback): static
     {
         $this->authorize = $callback;
+
+        return $this;
+    }
+
+    /**
+     * Who may resend a stored message. Resending is an outward action (it mails a third party), so it is a
+     * separate, closed-by-default permission: seeing the log does NOT imply it. With no callback the answer
+     * comes from the `resendMailLog` gate ability and, when it is not defined, from NOBODY. The user must
+     * also pass {@see self::canAccess()}.
+     */
+    public function authorizeResend(bool|Closure|null $callback): static
+    {
+        $this->authorizeResend = $callback;
 
         return $this;
     }
@@ -161,6 +179,19 @@ class MailLogPlugin implements Plugin
         }
 
         return Gate::has(static::ABILITY) && Gate::allows(static::ABILITY);
+    }
+
+    public function canResend(): bool
+    {
+        if (!$this->canAccess() || !(bool) config('filament-mail-log.resend.enabled', true)) {
+            return false;
+        }
+
+        if ($this->authorizeResend !== null) {
+            return $this->authorizeResend instanceof Closure ? (bool) app()->call($this->authorizeResend) : $this->authorizeResend;
+        }
+
+        return Gate::has(static::RESEND_ABILITY) && Gate::allows(static::RESEND_ABILITY);
     }
 
     public function getNavigationGroup(): string|UnitEnum|null
