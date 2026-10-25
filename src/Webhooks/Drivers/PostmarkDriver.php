@@ -77,7 +77,9 @@ final class PostmarkDriver extends AbstractDriver
             return null;
         }
 
-        if ($type === 'SpamNotification' || $type === 'SpamComplaint') {
+        // `SpamNotification` is a receiving server calling the message spam, not the recipient complaining: it is a
+        // soft bounce below and never suppresses. `SpamComplaint` is the recipient.
+        if ($type === 'SpamComplaint') {
             return $this->event($data, DeliveryEventType::Complained, $data['Email'] ?? null, $data['BouncedAt'] ?? null, null, $data['Description'] ?? null);
         }
 

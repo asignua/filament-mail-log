@@ -9,6 +9,7 @@ use Asignua\FilamentMailLog\Enums\DeliveryEventType;
 use Asignua\FilamentMailLog\Webhooks\DeliveryEvent;
 use Asignua\FilamentMailLog\Webhooks\InvalidWebhook;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 /**
  * SendGrid Event Webhook (signed). The body is a JSON array of events.
@@ -36,8 +37,22 @@ final class SendGridDriver extends AbstractDriver
             ? $key
             : "-----BEGIN PUBLIC KEY-----\n".chunk_split($key, 64, "\n")."-----END PUBLIC KEY-----\n";
         $decoded = base64_decode($signature, true);
+        $public = $decoded === false ? false : openssl_pkey_get_public($pem);
 
-        if ($decoded === false || openssl_verify($timestamp.$request->getContent(), $decoded, $pem, OPENSSL_ALGO_SHA256) !== 1) {
+        if ($public === false) {
+            // Drains the error queue so a bad key does not leak into the next call.
+            while ((string) openssl_error_string() !== '') {
+                // Keeps draining.
+            }
+
+            if ($decoded !== false) {
+                Log::warning('filament-mail-log: the SendGrid verification key is not a valid public key; every webhook is refused until it is fixed.');
+            }
+
+            throw InvalidWebhook::forbidden();
+        }
+
+        if (openssl_verify($timestamp.$request->getContent(), $decoded, $public, OPENSSL_ALGO_SHA256) !== 1) {
             throw InvalidWebhook::forbidden();
         }
 

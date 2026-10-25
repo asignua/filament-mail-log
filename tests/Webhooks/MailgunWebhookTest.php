@@ -34,7 +34,7 @@ class MailgunWebhookTest extends WebhookTestCase
     private function body(array $event, ?int $timestamp = null, ?string $key = null, ?string $token = null): string
     {
         $timestamp ??= time();
-        $token ??= 'cb2f4a1cd1b4b4d2bd4a3da2a6d9d3d4f0e1c2b3a4';
+        $token ??= bin2hex(random_bytes(20));
 
         return (string) json_encode([
             'signature' => [
@@ -172,5 +172,45 @@ class MailgunWebhookTest extends WebhookTestCase
         $this->hook($this->body($this->delivered(), null, null, 'token-two'))->assertOk();
 
         $this->assertCount(1, $this->events());
+    }
+
+    public function test_a_seen_signature_cannot_be_reused_with_another_body(): void
+    {
+        $this->log(['message_id' => '20180622182958.1.48906CB188F1A454@example.org']);
+        $genuine = $this->body($this->delivered(), null, null, 'one-token');
+
+        $this->hook($genuine)->assertOk();
+        // The signature covers only timestamp + token: the same pair with other event-data is a replay.
+        $forged = json_decode($genuine, true);
+        $forged['event-data'] = $this->delivered(['event' => 'complained', 'id' => 'forged']);
+        $this->hook((string) json_encode($forged))->assertForbidden();
+
+        // A retry of the very same body (Mailgun retries after a 5xx) is still welcome.
+        $this->hook($genuine)->assertOk();
+        $this->assertSame(1, $this->events()->count());
+        $this->assertSame(0, MailSuppression::query()->count());
+    }
+
+    public function test_only_real_bounces_suppress(): void
+    {
+        $log = $this->log(['message_id' => '20180622182958.1.48906CB188F1A454@example.org']);
+
+        foreach (['old', 'suppress-unsubscribe', 'espblock', 'generic', 'unknown-reason'] as $i => $reason) {
+            $this->hook($this->body($this->delivered(['event' => 'failed', 'id' => 'r'.$i, 'severity' => 'permanent', 'reason' => $reason])))->assertOk();
+        }
+
+        $this->assertSame(array_fill(0, 5, DeliveryEventType::Rejected), $this->events()->pluck('type')->all());
+        $this->assertSame(0, MailSuppression::query()->count());
+        $this->assertSame(DeliveryStatus::Rejected, $log->fresh()->delivery_status);
+
+        foreach (['bounce', 'hardfail', 'suppress-bounce'] as $i => $reason) {
+            $this->hook($this->body($this->delivered(['event' => 'failed', 'id' => 'h'.$i, 'severity' => 'permanent', 'reason' => $reason, 'recipient' => 'h'.$i.'@example.org'])))->assertOk();
+        }
+
+        $this->assertSame(3, MailSuppression::query()->count());
+        $this->assertSame(DeliveryStatus::Bounced, $log->fresh()->delivery_status);
+
+        $this->hook($this->body($this->delivered(['event' => 'failed', 'id' => 'c', 'severity' => 'permanent', 'reason' => 'suppress-complaint', 'recipient' => 'c@example.org'])))->assertOk();
+        $this->assertSame('complaint', MailSuppression::query()->where('email', 'c@example.org')->sole()->reason->value);
     }
 }

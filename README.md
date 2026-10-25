@@ -145,7 +145,7 @@ signature answers `403`.
    `create_mail_log_suppressions_table`). Until they ran, logging and the panel work as before and the new UI is hidden.
 2. Enable the provider (`.env` or the `webhooks.providers` config) and point the provider's webhook at
    `https://your-app.test/mail-log/webhooks/{provider}` (`webhooks.path`; an empty path does not register the route).
-   The route has no session and no CSRF; add rate limits with `webhooks.middleware` if you want them.
+   The route has no session and no CSRF; add a rate limit with `webhooks.middleware`, e.g. `['throttle:600,1']` (generous: providers send bursts and retry on a 429). Refused requests are logged at `debug` level only.
 
 | Provider | URL ends with | Env | Where to paste what |
 | --- | --- | --- | --- |
@@ -164,15 +164,17 @@ Mail sent through the **provider's API mailer** (the Symfony Postmark / Mailgun 
 both ways. Over **plain SMTP** the metadata header is not turned into provider metadata, so only the message id can match,
 and not every provider echoes the SMTP `Message-ID`; some relays read their own header, list it in
 `webhooks.stamp_headers` (e.g. `['X-PM-Metadata-mail_log_id']` for Postmark SMTP). `webhooks.stamp_metadata=false` turns the
-extra header off. Events nobody can match are acknowledged and dropped.
+extra header off. An event nobody can match is answered with `503` when it is less than `webhooks.retry_unmatched_seconds` (60) old, because it often arrives before the row has its message id, so the provider retries; older ones get `200` and are dropped.
 
 **Status precedence.** Webhooks arrive late, twice and out of order, so the stored status only moves forward:
 `deferred < soft bounce < delivered < opened < clicked < rejected < hard bounce < complaint`. A "delivered" that arrives after a
 hard bounce does not hide it; a soft bounce followed by a successful retry becomes "delivered". The mail log status
 (`queued / sending / sent / failed`) is not touched. A retried webhook is stored once (unique `provider` + provider event id).
 
+**Security notes.** Mailgun signs only timestamp and token, so each token is bound to the first body it arrived with (a different body with a seen token is refused). SNS: the signing certificate must come from a real regional `sns.<region>.amazonaws.com` host and be Amazon's `sns.amazonaws.com` certificate; the SNS timestamp window is 1 hour (`providers.ses.tolerance`) because SNS retries late, and a message that SNS delivers after its retry policy outlasts that window is refused with 403 and lost, so keep the policy's retry period under an hour or raise the tolerance. Mailgun `failed` events suppress only for reasons `bounce`, `hardfail`, `suppress-bounce`; Postmark `SpamNotification` and SES `not-spam` complaints never suppress. A misconfigured SendGrid key or a bad certificate is refused with `403` and one log warning, not a server error.
+
 Webhooks are handled in the request, not queued: a few indexed queries, the provider retries on any non-2xx, and tracking
-should not depend on a queue worker. Stored payloads are cleaned: signatures, tokens, SNS URLs are dropped and signed links
+should not depend on a queue worker. Stored payloads are cleaned: signatures, tokens, SNS URLs, the recipient's IP / user agent / client / geolocation (`webhooks.keep_client_info`) and ignored headers are dropped, lists are cut at 20 items, SES keeps only the id and time of its `mail` object, and signed links
 are redacted (`webhooks.store_payload=false` keeps no payload). Events go with their message when `mail-log:prune` deletes it.
 
 ### Suppression list

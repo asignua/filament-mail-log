@@ -69,7 +69,24 @@ return [
          */
         'path' => env('MAIL_LOG_WEBHOOKS_PATH', 'mail-log/webhooks'),
 
+        /*
+         * Extra route middleware. A rate limit is worth having once the endpoint is public, e.g. ['throttle:600,1']
+         * (generous: a provider sends bursts of events, and a 429 makes it retry). Not set by default.
+         */
         'middleware' => [],
+
+        /*
+         * An event that matches no message and happened less than this many seconds ago is answered with 503, so
+         * the provider delivers it again (it often arrives before the row has its message id). Older unmatched
+         * events get 200 and are dropped. 0 = always 200.
+         */
+        'retry_unmatched_seconds' => 60,
+
+        /*
+         * Keep the recipient's IP address, user agent, client and geolocation in the stored payload of open and
+         * click events. Off: they are personal data the timeline does not need.
+         */
+        'keep_client_info' => false,
 
         'events_table' => env('MAIL_LOG_EVENTS_TABLE', 'mail_log_events'),
 

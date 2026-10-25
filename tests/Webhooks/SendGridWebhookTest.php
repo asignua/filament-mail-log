@@ -200,4 +200,15 @@ class SendGridWebhookTest extends WebhookTestCase
 
         $this->assertCount(2, $this->events());
     }
+
+    public function test_a_misconfigured_key_is_refused_not_a_server_error(): void
+    {
+        $body = $this->body([$this->event('delivered')]);
+        $headers = $this->signed($body);
+
+        foreach (['not-a-key', 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE', '-----BEGIN PUBLIC KEY-----garbage-----END PUBLIC KEY-----'] as $key) {
+            $this->enable('sendgrid', ['public_key' => $key]);
+            $this->hook($body, $headers)->assertForbidden();
+        }
+    }
 }

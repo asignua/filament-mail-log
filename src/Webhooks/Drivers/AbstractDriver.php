@@ -58,15 +58,23 @@ abstract class AbstractDriver implements WebhookDriver
         }
     }
 
+    /**
+     * The event time, or now when the provider sent nothing usable. A placeholder such as 0001-01-01 (Postmark) or a
+     * far-future value would fail the TIMESTAMP insert on a strict MySQL and make the provider retry forever.
+     */
     protected function time(mixed $value): CarbonInterface
     {
         try {
+            $time = null;
+
             if (is_numeric($value)) {
-                return Carbon::createFromTimestamp((float) $value);
+                $time = Carbon::createFromTimestamp((float) $value);
+            } elseif (is_string($value) && $value !== '') {
+                $time = Carbon::parse($value);
             }
 
-            if (is_string($value) && $value !== '') {
-                return Carbon::parse($value);
+            if ($time !== null && $time->getTimestamp() >= 946_684_800 && $time->getTimestamp() <= time() + 86_400) {
+                return $time;
             }
         } catch (Throwable) {
             // Falls through to "now": an event with an unreadable time is still worth storing.

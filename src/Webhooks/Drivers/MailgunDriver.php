@@ -9,6 +9,7 @@ use Asignua\FilamentMailLog\Enums\DeliveryEventType;
 use Asignua\FilamentMailLog\Webhooks\DeliveryEvent;
 use Asignua\FilamentMailLog\Webhooks\InvalidWebhook;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * Mailgun (the JSON webhooks of the current API; the legacy form-encoded ones are not supported).
@@ -38,6 +39,17 @@ final class MailgunDriver extends AbstractDriver
         }
 
         $this->assertFresh((int) $timestamp);
+
+        // The signature covers only timestamp + token, not the body: a captured pair would let anyone post any
+        // event-data for the whole window. Each token is bound to the first body it came with; the same body
+        // again (Mailgun retries after a 5xx) is fine, another body is a replay.
+        $fingerprint = hash('sha256', $request->getContent());
+        $key = 'filament-mail-log:mailgun-token:'.sha1($token);
+        $window = max(60, (int) ($this->config['tolerance'] ?? config('filament-mail-log.webhooks.tolerance', 300)) * 2);
+
+        if (!Cache::add($key, $fingerprint, $window) && !hash_equals((string) Cache::get($key), $fingerprint)) {
+            throw InvalidWebhook::forbidden('The signature was already used.');
+        }
     }
 
     public function events(Request $request): array
@@ -52,6 +64,7 @@ final class MailgunDriver extends AbstractDriver
         $status = is_array($event['delivery-status'] ?? null) ? $event['delivery-status'] : [];
         $detail = $status['description'] ?? $status['message'] ?? $event['reason'] ?? null;
         $name = $event['event'];
+        $reason = is_string($event['reason'] ?? null) ? $event['reason'] : '';
 
         [$type, $bounce] = match (true) {
             $name === 'delivered' => [DeliveryEventType::Delivered, null],
@@ -59,8 +72,11 @@ final class MailgunDriver extends AbstractDriver
             $name === 'clicked' => [DeliveryEventType::Clicked, null],
             $name === 'complained' => [DeliveryEventType::Complained, null],
             $name === 'rejected' => [DeliveryEventType::Rejected, null],
-            // `failed` + permanent is a hard bounce; temporary ones are retried by Mailgun, so they are only "deferred".
-            $name === 'failed' && ($event['severity'] ?? null) === 'permanent' => [DeliveryEventType::Bounced, BounceType::Hard],
+            // `failed` + permanent: only a real bounce is a dead address. `old` (retries exhausted after an outage),
+            // `espblock`, `generic`, `suppress-unsubscribe`... say nothing about the address, so they are only "rejected".
+            $name === 'failed' && ($event['severity'] ?? null) === 'permanent' && $reason === 'suppress-complaint' => [DeliveryEventType::Complained, null],
+            $name === 'failed' && ($event['severity'] ?? null) === 'permanent' && in_array($reason, ['bounce', 'hardfail', 'suppress-bounce'], true) => [DeliveryEventType::Bounced, BounceType::Hard],
+            $name === 'failed' && ($event['severity'] ?? null) === 'permanent' => [DeliveryEventType::Rejected, null],
             $name === 'failed' => [DeliveryEventType::Deferred, null],
             default => [null, null],
         };

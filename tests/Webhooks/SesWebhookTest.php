@@ -42,10 +42,7 @@ class SesWebhookTest extends WebhookTestCase
         $this->assertNotFalse($key);
         $this->private = $key;
 
-        $csr = openssl_csr_new(['commonName' => 'sns.amazonaws.com'], $key);
-        $this->assertNotFalse($csr);
-        $certificate = openssl_csr_sign($csr, null, $key, 1);
-        openssl_x509_export($certificate, $pem);
+        $pem = $this->certificate($key, 'sns.amazonaws.com', 'Amazon');
 
         Http::fake([
             self::CERT_URL => Http::response($pem),
@@ -53,6 +50,16 @@ class SesWebhookTest extends WebhookTestCase
         ]);
 
         $this->enable('ses', ['topic_arns' => [self::TOPIC]]);
+    }
+
+    private function certificate(\OpenSSLAsymmetricKey $key, string $commonName, string $organization): string
+    {
+        $csr = openssl_csr_new(['commonName' => $commonName, 'organizationName' => $organization], $key);
+        $this->assertNotFalse($csr);
+        $certificate = openssl_csr_sign($csr, null, $key, 1);
+        openssl_x509_export($certificate, $pem);
+
+        return $pem;
     }
 
     /**
@@ -279,7 +286,7 @@ class SesWebhookTest extends WebhookTestCase
 
     public function test_a_certificate_url_outside_aws_is_never_fetched(): void
     {
-        foreach (['https://evil.example.com/cert.pem', 'http://sns.eu-west-1.amazonaws.com/cert.pem', 'https://sns.eu-west-1.amazonaws.com.evil.com/cert.pem', 'https://sns.eu-west-1.amazonaws.com/cert.txt', 'https://user@sns.eu-west-1.amazonaws.com/cert.pem'] as $url) {
+        foreach (['https://evil.example.com/cert.pem', 'http://sns.eu-west-1.amazonaws.com/cert.pem', 'https://sns.eu-west-1.amazonaws.com.evil.com/cert.pem', 'https://sns.eu-west-1.amazonaws.com/cert.txt', 'https://user@sns.eu-west-1.amazonaws.com/cert.pem', 'https://sns.s3.amazonaws.com/cert.pem', 'https://sns.s3-us-west-2.amazonaws.com/cert.pem', 'https://sns.execute-api.amazonaws.com/cert.pem', 'https://sns.eu-west-1.amazonaws.com.cn.evil.com/cert.pem', 'https://sns.evil-1.amazonaws.com/cert.pem'] as $url) {
             $this->hook($this->sns(['SigningCertURL' => $url, 'Message' => (string) json_encode(['eventType' => 'Delivery', 'mail' => $this->mail()])]))->assertForbidden();
         }
 
@@ -339,5 +346,76 @@ class SesWebhookTest extends WebhookTestCase
         $body = $this->sns(['Message' => 'x', 'SubscribeURL' => self::SUBSCRIBE_URL, 'Token' => 't'], 'SubscriptionConfirmation');
 
         $this->hook($body)->assertStatus(502);
+    }
+
+    public function test_real_regional_hosts_are_accepted(): void
+    {
+        $this->log(['message_id' => 'abc']);
+
+        foreach (['sns.us-gov-west-1.amazonaws.com', 'sns.cn-north-1.amazonaws.com.cn', 'sns.ap-southeast-2.amazonaws.com'] as $i => $host) {
+            $url = 'https://'.$host.'/SimpleNotificationService.pem';
+            Http::fake([$url => Http::response($this->certificate($this->private, 'sns.amazonaws.com', 'Amazon'))]);
+            $body = $this->sns(['SigningCertURL' => $url, 'MessageId' => 'm'.$i, 'Message' => (string) json_encode(['eventType' => 'Delivery', 'mail' => $this->mail(['messageId' => 'abc']), 'delivery' => ['recipients' => ['r@example.com']]])]);
+
+            $this->hook($body)->assertOk()->assertJson(['matched' => 1]);
+        }
+    }
+
+    public function test_a_certificate_of_someone_else_is_refused_even_from_an_aws_url(): void
+    {
+        foreach ([['evil.example.com', 'Amazon'], ['sns.amazonaws.com', 'Mallory Inc'], ['sns.amazonaws.com.evil.com', 'Amazon']] as $i => [$cn, $org]) {
+            $url = 'https://sns.eu-west-1.amazonaws.com/other'.$i.'.pem';
+            Http::fake([$url => Http::response($this->certificate($this->private, $cn, $org))]);
+            $body = $this->sns(['SigningCertURL' => $url, 'Message' => (string) json_encode(['eventType' => 'Delivery', 'mail' => $this->mail()])]);
+
+            $this->hook($body)->assertForbidden();
+        }
+    }
+
+    public function test_a_garbage_certificate_is_refused_not_a_server_error_and_not_cached(): void
+    {
+        $url = 'https://sns.eu-west-1.amazonaws.com/garbage.pem';
+        Http::fake([$url => Http::response('<html>not a certificate</html>')]);
+        $body = $this->sns(['SigningCertURL' => $url, 'Message' => (string) json_encode(['eventType' => 'Delivery', 'mail' => $this->mail()])]);
+
+        $this->hook($body)->assertForbidden();
+        $this->hook($body)->assertForbidden();
+
+        Http::assertSentCount(2);
+    }
+
+    public function test_the_stored_payload_is_small_and_private(): void
+    {
+        $this->log(['message_id' => '0100018bexample-aedb9a-02f9-4d12-a87d-dd0099a07f8a-000000']);
+        $headers = [['name' => 'From', 'value' => 'sender@example.com'], ['name' => 'Authorization', 'value' => 'Bearer topsecret'], ['name' => 'Subject', 'value' => 'Reset: https://x.test/reset-password/abc123']];
+        $recipients = array_map(fn (int $i): array => ['emailAddress' => 'u'.$i.'@example.com'], range(1, 60));
+
+        $this->hook($this->notification([
+            'eventType' => 'Click',
+            'mail' => $this->mail(['headers' => $headers, 'destination' => ['recipient@example.com'], 'source' => 'Sender <sender@example.com>']),
+            'click' => ['timestamp' => '2026-10-23T01:01:00Z', 'link' => 'https://example.test/', 'ipAddress' => '203.0.113.7', 'userAgent' => 'Mozilla secretagent', 'linkTags' => ['a' => ['b']]],
+            'extra' => $recipients,
+        ]))->assertOk();
+
+        $json = (string) json_encode($this->events()->sole()->payload);
+
+        foreach (['203.0.113.7', 'secretagent', 'topsecret', 'abc123', 'sender@example.com', 'u59@example.com'] as $leak) {
+            $this->assertStringNotContainsString($leak, $json);
+        }
+        $this->assertStringContainsString('0100018bexample', $json);
+    }
+
+    public function test_a_not_spam_complaint_does_not_suppress(): void
+    {
+        $log = $this->log(['message_id' => '0100018bexample-aedb9a-02f9-4d12-a87d-dd0099a07f8a-000000']);
+
+        $this->hook($this->notification([
+            'eventType' => 'Complaint',
+            'complaint' => ['complainedRecipients' => [['emailAddress' => 'recipient@example.com']], 'timestamp' => '2026-10-23T00:41:02.669Z', 'complaintFeedbackType' => 'not-spam'],
+            'mail' => $this->mail(),
+        ]))->assertOk();
+
+        $this->assertSame(0, MailSuppression::query()->count());
+        $this->assertNotSame(DeliveryStatus::Complained, $log->fresh()->delivery_status);
     }
 }

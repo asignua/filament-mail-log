@@ -9,6 +9,7 @@ All notable changes to `asignua/filament-mail-log` are documented here.
 - New: **suppression list** (`mail_log_suppressions`): hard bounces and complaints are recorded; with `suppression.enabled` suppressed addresses are dropped from outgoing mail and a message with no recipient left is not sent (status `suppressed`). "Suppressions" resource; removing is closed behind the `manageMailSuppressions` gate / `authorizeSuppressions()`.
 - New: delivery status badge column and filter in the table, a "Delivery events" timeline on the message page, English and Ukrainian translations.
 - **Needs three new migrations** (`add_delivery_status_to_mail_logs_table`, `create_mail_log_events_table`, `create_mail_log_suppressions_table`); publish and run them. Until then logging works as before and the new UI is hidden.
+- Hardening after review: SNS certificate host pinned to real regional endpoints and the certificate itself verified; Mailgun signature bound to its first body; only real bounces / complaints suppress (Mailgun reasons, Postmark `SpamNotification`, SES `not-spam`); bad keys and certificates give 403 instead of 500; out-of-range event dates fall back to now; fresh unmatched events get a retryable 503; client IP / user agent / geolocation are no longer stored; refused requests log at debug.
 - Config: `webhooks.*`, `suppression.*`.
 
 ## 1.1.0 - 2026-10-25

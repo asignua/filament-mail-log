@@ -224,4 +224,66 @@ class PostmarkWebhookTest extends WebhookTestCase
     {
         $this->hook('not json', $this->auth())->assertStatus(400);
     }
+
+    public function test_a_spam_notification_bounce_is_not_a_recipient_complaint(): void
+    {
+        $log = $this->log(['message_id' => self::MESSAGE_ID]);
+
+        $this->hook($this->bounce(['Type' => 'SpamNotification', 'ID' => 55]), $this->auth())->assertOk();
+
+        $this->assertSame(DeliveryEventType::Bounced, $this->events()->sole()->type);
+        $this->assertSame(BounceType::Soft, $this->events()->sole()->bounce);
+        $this->assertSame(0, MailSuppression::query()->count());
+        $this->assertSame(DeliveryStatus::SoftBounced, $log->fresh()->delivery_status);
+    }
+
+    public function test_a_placeholder_date_falls_back_to_now(): void
+    {
+        $this->log(['message_id' => self::MESSAGE_ID]);
+
+        $this->hook($this->delivery(['DeliveredAt' => '0001-01-01T00:00:00Z']), $this->auth())->assertOk();
+
+        $this->assertGreaterThan(now()->subMinute()->getTimestamp(), $this->events()->sole()->occurred_at->getTimestamp());
+    }
+
+    public function test_client_details_are_not_stored_by_default(): void
+    {
+        $this->log(['message_id' => self::MESSAGE_ID]);
+        $open = (string) json_encode(['RecordType' => 'Open', 'MessageID' => self::MESSAGE_ID, 'Recipient' => 'ann@example.test', 'ReceivedAt' => '2026-10-20T17:00:00Z', 'FirstOpen' => true,
+            'Client' => ['Name' => 'Chrome'], 'OS' => ['Name' => 'macOS'], 'Platform' => 'WebMail', 'UserAgent' => 'Mozilla/5.0 secretagent', 'Geo' => ['IP' => '203.0.113.9', 'City' => 'Lviv']]);
+
+        $this->hook($open, $this->auth())->assertOk();
+
+        $json = (string) json_encode($this->events()->sole()->payload);
+        $this->assertStringContainsString('FirstOpen', $json);
+
+        foreach (['203.0.113.9', 'Lviv', 'secretagent', 'Chrome'] as $secret) {
+            $this->assertStringNotContainsString($secret, $json);
+        }
+
+        config()->set('filament-mail-log.webhooks.keep_client_info', true);
+        $this->hook(str_replace('2026-10-20T17:00:00Z', '2026-10-20T17:05:00Z', $open), $this->auth())->assertOk();
+        $this->assertStringContainsString('203.0.113.9', (string) json_encode($this->events()->last()->payload));
+    }
+
+    public function test_a_young_unmatched_event_is_answered_with_a_retryable_status(): void
+    {
+        // The row may not be marked sent yet (the event raced the transport answer): ask the provider to retry.
+        $young = $this->delivery(['DeliveredAt' => now()->toIso8601String()]);
+
+        $this->hook($young, $this->auth())->assertStatus(503);
+
+        // Older than the window: nobody will ever match it, stop the retries.
+        $this->hook($this->delivery(['DeliveredAt' => now()->subMinutes(5)->toIso8601String()]), $this->auth())->assertOk();
+
+        config()->set('filament-mail-log.webhooks.retry_unmatched_seconds', 0);
+        $this->hook($young, $this->auth())->assertOk();
+    }
+
+    public function test_a_young_matched_event_is_fine(): void
+    {
+        $this->log(['message_id' => self::MESSAGE_ID]);
+
+        $this->hook($this->delivery(['DeliveredAt' => now()->toIso8601String()]), $this->auth())->assertOk();
+    }
 }

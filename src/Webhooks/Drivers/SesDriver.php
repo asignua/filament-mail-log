@@ -13,6 +13,7 @@ use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Amazon SES through an SNS HTTP(S) subscription (configuration set event destination, or the identity
@@ -31,7 +32,11 @@ use Illuminate\Support\Facades\Http;
  */
 final class SesDriver extends AbstractDriver
 {
-    private const string HOST = '/^sns\.[a-z0-9-]+\.amazonaws\.com(\.cn)?$/i';
+    /**
+     * A real SNS regional endpoint only. A looser `sns.<anything>.amazonaws.com` also matches buckets and gateways
+     * that third parties own (`sns.s3.amazonaws.com`, `sns.execute-api.amazonaws.com`).
+     */
+    private const string HOST = '/^sns\.[a-z]{2}(-gov|-iso[a-z]*)?-[a-z]+-\d+\.amazonaws\.com(\.cn)?\z/i';
 
     /** Keys that are signed, in the order AWS defines, per message type. */
     private const array SIGNED = [
@@ -80,7 +85,7 @@ final class SesDriver extends AbstractDriver
 
         $certificate = $this->certificate((string) ($message['SigningCertURL'] ?? ''));
 
-        if (openssl_verify($canonical, $signature, $certificate, $algorithm) !== 1) {
+        if (@openssl_verify($canonical, $signature, $certificate, $algorithm) !== 1) {
             throw InvalidWebhook::forbidden();
         }
 
@@ -121,7 +126,7 @@ final class SesDriver extends AbstractDriver
     {
         $name = $body['eventType'] ?? $body['notificationType'] ?? null;
         $mail = is_array($body['mail'] ?? null) ? $body['mail'] : [];
-        $stored = $this->stored($body);
+        $stored = $this->stored($this->slim($body));
         $ids = $this->messageIds($mail);
         $logIds = $this->logIds($mail);
         $destination = array_values(array_filter(is_array($mail['destination'] ?? null) ? $mail['destination'] : [], 'is_string'));
@@ -165,6 +170,11 @@ final class SesDriver extends AbstractDriver
             case 'Complaint':
                 $info = is_array($body['complaint'] ?? null) ? $body['complaint'] : [];
 
+                // "not-spam" is the recipient taking a complaint back: not a reason to stop mailing them.
+                if (($info['complaintFeedbackType'] ?? null) === 'not-spam') {
+                    break;
+                }
+
                 foreach (is_array($info['complainedRecipients'] ?? null) ? $info['complainedRecipients'] : [] as $row) {
                     if (is_array($row) && is_string($row['emailAddress'] ?? null)) {
                         $events[] = $make(DeliveryEventType::Complained, $row['emailAddress'], $info['timestamp'] ?? null, null, $info['complaintFeedbackType'] ?? null);
@@ -198,6 +208,22 @@ final class SesDriver extends AbstractDriver
         }
 
         return $events;
+    }
+
+    /**
+     * What is worth keeping of an SES notification: the event itself, and only the id and time of the `mail`
+     * object (it repeats the whole message: sender, every recipient, all headers, the source IP).
+     *
+     * @param array<array-key, mixed> $body
+     *
+     * @return array<array-key, mixed>
+     */
+    private function slim(array $body): array
+    {
+        $mail = is_array($body['mail'] ?? null) ? $body['mail'] : [];
+        $body['mail'] = array_intersect_key($mail, ['messageId' => true, 'timestamp' => true]);
+
+        return $body;
     }
 
     /**
@@ -266,19 +292,68 @@ final class SesDriver extends AbstractDriver
         return $message;
     }
 
+    /**
+     * The signing certificate as PEM, fetched once a day. It is checked every time it is used: a cache entry
+     * that is no certificate (or not Amazon's) is thrown away, never trusted.
+     */
     private function certificate(string $url): string
     {
         $this->assertAwsUrl($url, true);
 
+        $key = 'filament-mail-log:sns-certificate:'.sha1($url);
+        $cached = Cache::get($key);
+
+        if (is_string($cached) && $this->isAmazonCertificate($cached)) {
+            return $cached;
+        }
+
+        Cache::forget($key);
+
         try {
-            return (string) Cache::remember(
-                'filament-mail-log:sns-certificate:'.sha1($url),
-                now()->addDay(),
-                static fn (): string => Http::timeout(5)->get($url)->throw()->body(),
-            );
+            $pem = Http::timeout(5)->get($url)->throw()->body();
         } catch (ConnectionException|RequestException) {
             throw InvalidWebhook::unavailable('The signing certificate could not be fetched.');
         }
+
+        if (!$this->isAmazonCertificate($pem)) {
+            Log::warning('filament-mail-log: the SNS signing certificate at '.$url.' is not a valid Amazon SNS certificate.');
+
+            throw InvalidWebhook::forbidden();
+        }
+
+        Cache::put($key, $pem, now()->addDay());
+
+        return $pem;
+    }
+
+    /**
+     * Subject `sns.amazonaws.com` (common name or subject alternative name), issued by Amazon or the CAs it used before, within its validity.
+     */
+    private function isAmazonCertificate(string $pem): bool
+    {
+        $info = @openssl_x509_parse($pem);
+
+        if (!is_array($info)) {
+            return false;
+        }
+
+        $subject = $info['subject'] ?? [];
+        $names = (array) ($subject['CN'] ?? []);
+
+        foreach (explode(',', (string) ($info['extensions']['subjectAltName'] ?? '')) as $alt) {
+            $names[] = trim(str_replace('DNS:', '', $alt));
+        }
+
+        // The issuer's ORGANISATION, not its common name (a self-signed certificate copies the subject there).
+        // Amazon's own CA today; SNS certificates were issued by DigiCert / VeriSign / Symantec before that.
+        $issuer = implode(' ', array_map('strval', (array) ($info['issuer']['O'] ?? [])));
+        $now = time();
+
+        return in_array('sns.amazonaws.com', $names, true)
+            && preg_match('/amazon|digicert|verisign|symantec/i', $issuer) === 1
+            && (int) ($info['validFrom_time_t'] ?? PHP_INT_MAX) <= $now
+            && (int) ($info['validTo_time_t'] ?? 0) >= $now
+            && @openssl_pkey_get_public($pem) !== false;
     }
 
     private function confirm(string $url): void
