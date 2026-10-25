@@ -2,7 +2,7 @@
 
 [![Stand With Ukraine](https://raw.githubusercontent.com/vshymanskyy/StandWithUkraine/main/badges/StandWithUkraine.svg)](https://stand-with-ukraine.pp.ua)
 
-<img class="filament-hidden" src="https://raw.githubusercontent.com/asignua/filament-mail-log/v1.0.1/art/cover.jpg" alt="Filament Mail Log">
+<img class="filament-hidden" src="https://raw.githubusercontent.com/asignua/filament-mail-log/v1.2.0/art/cover.jpg" alt="Filament Mail Log">
 
 [![Tests](https://img.shields.io/github/actions/workflow/status/asignua/filament-mail-log/tests.yml?branch=main&label=tests)](https://github.com/asignua/filament-mail-log/actions/workflows/tests.yml)
 
@@ -18,27 +18,27 @@ redacted **before** the copy is stored.
 
 Every message with its status (queued, sent or failed), recipient, subject and type:
 
-![The mail log table with sent, queued and failed messages](https://raw.githubusercontent.com/asignua/filament-mail-log/v1.0.1/art/list.jpg)
+![The mail log table with sent, queued and failed messages](https://raw.githubusercontent.com/asignua/filament-mail-log/v1.2.0/art/list.jpg)
 
 A failed message keeps the transport error, the recipients and the timeline:
 
-![A failed message with the SMTP error](https://raw.githubusercontent.com/asignua/filament-mail-log/v1.0.1/art/view-failed.jpg)
+![A failed message with the SMTP error](https://raw.githubusercontent.com/asignua/filament-mail-log/v1.2.0/art/view-failed.jpg)
 
 Signed-link signatures and reset tokens are replaced before the copy is stored:
 
-![Plain text tab with a redacted signature and token](https://raw.githubusercontent.com/asignua/filament-mail-log/v1.0.1/art/view-text.jpg)
+![Plain text tab with a redacted signature and token](https://raw.githubusercontent.com/asignua/filament-mail-log/v1.2.0/art/view-text.jpg)
 
 The HTML tab renders the stored body in a sandboxed frame (no scripts, remote images off until you ask):
 
-![The HTML tab](https://raw.githubusercontent.com/asignua/filament-mail-log/v1.0.1/art/view-html.jpg)
+![The HTML tab](https://raw.githubusercontent.com/asignua/filament-mail-log/v1.2.0/art/view-html.jpg)
 
 Resend a stored message to the same or other recipients (separate permission, with a warning when secrets were removed):
 
-![The Resend modal](https://raw.githubusercontent.com/asignua/filament-mail-log/v1.1.0/art/resend.jpg)
+![The Resend modal](https://raw.githubusercontent.com/asignua/filament-mail-log/v1.2.0/art/resend.jpg)
 
 Dark mode:
 
-![The mail log in dark mode](https://raw.githubusercontent.com/asignua/filament-mail-log/v1.0.1/art/list-dark.jpg)
+![The mail log in dark mode](https://raw.githubusercontent.com/asignua/filament-mail-log/v1.2.0/art/list-dark.jpg)
 
 ## Requirements
 
