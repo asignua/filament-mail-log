@@ -231,4 +231,115 @@ class RelationsTest extends TestCase
             ->assertSee(__('filament-mail-log::filament-mail-log.sections.related'))
             ->assertSee('Order: SO-77');
     }
+
+    public function test_eager_loading_counting_and_filtering_work_on_the_typed_key(): void
+    {
+        $with = $this->order('SO-1');
+        $without = $this->order('SO-2');
+        Mail::to('ann@example.test')->send(new OrderShipped($with));
+        Mail::to('ann@example.test')->send(new OrderShipped($with));
+
+        $loaded = Order::query()->with('mailLogs')->orderBy('id')->get();
+        $this->assertCount(2, $loaded->first()->mailLogs);
+        $this->assertCount(0, $loaded->last()->mailLogs);
+
+        $counted = Order::query()->withCount('mailLogs')->orderBy('id')->get();
+        $this->assertSame([2, 0], $counted->pluck('mail_logs_count')->all());
+
+        $this->assertSame([$with->id], Order::query()->whereHas('mailLogs')->pluck('id')->all());
+        $this->assertSame([$without->id], Order::query()->whereDoesntHave('mailLogs')->pluck('id')->all());
+    }
+
+    public function test_the_key_column_is_an_integer_by_default(): void
+    {
+        $this->assertSame('integer', \Illuminate\Support\Facades\Schema::getColumnType('mail_log_relations', 'related_id'));
+    }
+
+    public function test_a_string_key_type_stores_string_keys(): void
+    {
+        \Illuminate\Support\Facades\Schema::drop('mail_log_relations');
+        config()->set('filament-mail-log.relations.key_type', 'string');
+        (include __DIR__.'/../../database/migrations/create_mail_log_relations_table.php.stub')->up();
+        \Asignua\FilamentMailLog\Support\TrackingSchema::forget();
+
+        Mail::to('ann@example.test')->send(new OrderShipped($order = $this->order()));
+
+        $this->assertSame((string) $order->id, MailLogRelation::query()->sole()->related_id);
+        $this->assertSame(1, $order->mailLogs()->count());
+    }
+
+    public function test_a_key_the_column_cannot_hold_is_skipped(): void
+    {
+        config()->set('filament-mail-log.relations.key_type', 'int');
+        $log = MailLog::query()->create(['ulid' => 'X', 'status' => 'sent', 'recipient' => 'a@example.test']);
+
+        app(\Asignua\FilamentMailLog\Repositories\MailLogRelationRepository::class)->attach($log, [['App\\Thing', '019f2c3e-uuid'], ['App\\Thing', 7]]);
+
+        $this->assertSame([7], MailLogRelation::query()->pluck('related_id')->map(fn ($v): int => (int) $v)->all());
+    }
+
+    public function test_the_filter_with_an_id_the_column_cannot_hold_matches_nothing(): void
+    {
+        $order = $this->order();
+        Mail::to('ann@example.test')->send(new OrderShipped($order));
+
+        Livewire::test(ListMailLogs::class)
+            ->filterTable('related', ['related_type' => $order->getMorphClass(), 'related_id' => 'abc'])
+            ->assertCountTableRecords(0);
+    }
+
+    public function test_related_to_keeps_only_pairs_so_no_attributes_are_queued(): void
+    {
+        $order = $this->order();
+        $other = $this->order('SO-9');
+        $mail = (new OrderShipped($order))->relatedTo($other);
+
+        $this->assertSame([[Order::class, $other->id]], $mail->mailLogRelatedRefs());
+        $this->assertStringNotContainsString('customer_email', serialize($mail->mailLogRelatedRefs()));
+    }
+
+    public function test_a_deleted_related_model_is_still_linked_by_its_pair_but_never_resurrected(): void
+    {
+        $order = $this->order();
+        $mail = (new OrderShipped($this->order('SO-5')))->relatedTo($order);
+        $order->delete();
+
+        $restored = unserialize(serialize($mail));
+        Mail::to('ann@example.test')->send($restored);
+
+        $this->assertSame(0, Order::query()->whereKey($order->id)->count());
+        $this->assertSame(2, MailLogRelation::query()->count());
+    }
+
+    public function test_the_view_action_links_to_the_message_page_instead_of_an_empty_modal(): void
+    {
+        $order = $this->order();
+        Mail::to('ann@example.test')->send(new OrderShipped($order));
+        $log = $order->mailLogs()->firstOrFail();
+
+        Livewire::test(MailLogsRelationManager::class, ['ownerRecord' => $order, 'pageClass' => ViewOrder::class])
+            ->assertTableActionHasUrl('view', \Asignua\FilamentMailLog\Filament\Resources\MailLogs\MailLogResource::getUrl('view', ['record' => $log]), $log);
+    }
+
+    public function test_the_trait_wiring_survives_a_mailable_that_aliases_it(): void
+    {
+        $mail = new class(new Order) extends \Illuminate\Mail\Mailable implements \Asignua\FilamentMailLog\Contracts\RelatesToMailLog
+        {
+            use \Asignua\FilamentMailLog\Concerns\HasMailLogRelations {
+                additionalMessageData as protected mailLogAdditionalMessageData;
+            }
+
+            public function __construct(public Order $order) {}
+
+            protected function additionalMessageData(): array
+            {
+                return array_merge($this->mailLogAdditionalMessageData(), ['extra' => 1]);
+            }
+        };
+
+        $data = (new \ReflectionMethod($mail, 'additionalMessageData'))->invoke($mail);
+
+        $this->assertArrayHasKey('extra', $data);
+        $this->assertArrayHasKey(\Asignua\FilamentMailLog\Support\MailRelations::DATA_KEY, $data);
+    }
 }

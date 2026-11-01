@@ -237,7 +237,7 @@ class OrderShipped extends Mailable implements RelatesToMailLog
 
     public function mailLogRelations(): iterable
     {
-        return [$this->order, $this->order->customer, ...$this->mailLogRelated];
+        return [$this->order, $this->order->customer];
     }
 }
 
@@ -249,6 +249,17 @@ class OrderPaid extends Notification implements RelatesToMailLog { use RelatesTo
 // nothing at all: the notifiable of a mail notification is related automatically
 $user->notify(new OrderPaid);          // linked to $user
 ```
+
+`relatedTo()` keeps only the `[morph class, key]` of each model, so a queued mailable carries no attributes of the model
+(no personal data in the queue payload) and a model deleted before the job runs still links by its key. A Mailable that
+overrides `additionalMessageData()` itself must call the trait's version (alias it with `use HasMailLogRelations { additionalMessageData as protected mailLogAdditionalMessageData; }`),
+or its links are lost.
+
+**Key type.** `related_id` is typed like Laravel's `morphs()`: `relations.key_type` = `int` (default, unsigned bigint),
+`uuid`, `ulid` or `string`. Pick the one your models' primary keys use **before migrating**: it is what lets
+`Order::with('mailLogs')`, `withCount('mailLogs')` and `whereHas('mailLogs')` compare keys without a cast. PostgreSQL
+refuses `varchar = integer`, so on PostgreSQL a `string` column works only when every related model uses a string key
+(mixed key types need `string`, and then those three calls need a manual cast there; MySQL / MariaDB / SQLite do not care).
 
 Only saved models are linked, each once, at most `relations.max` (20) per message; an on-demand route
 (`Notification::route('mail', ...)`) has no model and is skipped. A resend inherits the links of the original. The
@@ -272,11 +283,22 @@ Gate::define('receiveMailLogAlerts', fn (User $user): bool => $user->isAdmin());
 ```
 
 The panel needs `->databaseNotifications()` to show the bell. Choose the triggers with `alerts.on`
-(`hard_bounce`, `complaint`, `suppression`); one provider event raises one alert even if it matches several. To pick the
-users yourself (a team, a role) call `BounceAlerts::recipientsUsing(fn () => $users)` from a service provider.
+(`hard_bounce`, `complaint`, `suppression`); one provider event raises one alert even if it matches several.
+
+**Delivery is a queued job.** The webhook only does the throttle check and enqueues `DeliverBounceAlert`; the user lookup
+and the mail run in the worker (`alerts.queue.connection` / `alerts.queue.name`; with the `sync` driver they run inside the
+webhook request, so use a real queue in production).
+
+**Recommended: `recipientsUsing()`.** The gate has to be asked about each user, so with the gate the job walks the users
+table in chunks (stopping at `alerts.max_recipients` allowed users or `alerts.scan_limit` users looked at). On a site with
+many users, name the recipients yourself with one query, from a service provider:
+
+```php
+BounceAlerts::recipientsUsing(fn () => User::query()->role('admin')->get());
+```
 
 Alerts are throttled: one per address per `per_address_minutes`, and at most `max` per `window_minutes` (uses the cache,
-so it needs a shared one in production); the alerts held back are counted in the next one. A redelivered webhook never
+so it needs a shared one in production); the alerts held back are counted, and their addresses named, in the next one. A redelivered webhook never
 alerts twice, and a bounce of the alert mail itself never alerts. A failure while alerting is logged and never fails
 the webhook.
 

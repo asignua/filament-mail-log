@@ -184,6 +184,15 @@ return [
         'table' => env('MAIL_LOG_RELATIONS_TABLE', 'mail_log_relations'),
 
         /*
+         * Type of the `related_id` column, like the `morphs()` family of Laravel: `int` (unsignedBigInteger, the
+         * default), `uuid`, `ulid` or `string`. Pick the one your related models' primary keys use; a typed column
+         * is what lets `with('mailLogs')`, `withCount()` and `whereHas()` compare keys without a cast (PostgreSQL
+         * refuses `varchar = integer`). Models with DIFFERENT key types need `string`; then, on PostgreSQL, those
+         * three calls need the keys cast by hand. Read when the migration runs, so decide before migrating.
+         */
+        'key_type' => env('MAIL_LOG_RELATIONS_KEY_TYPE', 'int'),
+
+        /*
          * Relate a mail notification to its notifiable when that is an Eloquent model (not an on-demand route).
          */
         'notifiable' => true,
@@ -215,6 +224,22 @@ return [
         'gate' => 'receiveMailLogAlerts',
 
         'database' => true,
+
+        /*
+         * The alert is delivered by a queued job (the webhook only enqueues it). null = the default connection / queue;
+         * with the `sync` driver it runs inside the webhook request.
+         */
+        'queue' => [
+            'connection' => env('MAIL_LOG_ALERTS_QUEUE_CONNECTION'),
+            'name' => env('MAIL_LOG_ALERTS_QUEUE'),
+        ],
+
+        /*
+         * The gate is asked about each user, so the lookup walks the users table in chunks. It stops at
+         * `max_recipients` allowed users or after looking at `scan_limit` users. Big user tables: use
+         * `BounceAlerts::recipientsUsing()` instead.
+         */
+        'scan_limit' => 1000,
 
         /*
          * Comma separated addresses that get a plain mail. Empty = no mail. The alert mail is never alerted about.

@@ -90,7 +90,7 @@ final class RelatedLabel
         return $options;
     }
 
-    private static function find(string $morphClass, string $id): ?Model
+    private static function find(string $morphClass, int|string $id): ?Model
     {
         try {
             $class = Relation::getMorphedModel($morphClass) ?? $morphClass;

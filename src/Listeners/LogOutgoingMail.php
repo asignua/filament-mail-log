@@ -13,7 +13,6 @@ use Asignua\FilamentMailLog\Support\MailLogContext;
 use Asignua\FilamentMailLog\Support\MailRedactor;
 use Asignua\FilamentMailLog\Support\MailRelations;
 use Asignua\FilamentMailLog\Support\TrackingSchema;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Mail\Events\MessageSending;
 use Illuminate\Mail\Events\MessageSent;
 use Illuminate\Mail\Mailable;
@@ -273,7 +272,7 @@ final class LogOutgoingMail
      * Links the row to the models it is about. Its own try block: a failure here (the table is not migrated yet)
      * must not lose the log row, nor the correlation header that is set after it.
      *
-     * @param list<Model> $models
+     * @param list<array{0: string, 1: int|string}> $models
      */
     private function relate(MailLog $log, array $models, ?int $resentFrom = null): void
     {

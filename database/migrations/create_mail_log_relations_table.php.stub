@@ -36,8 +36,13 @@ return new class extends Migration
             $table->unsignedBigInteger('mail_log_id');
             // The morph class of the related model (its alias from Relation::morphMap(), or the class name).
             $table->string('related_type', 120);
-            // A string, so integer, UUID and ULID keys all fit.
-            $table->string('related_id', 64);
+            // Typed like Laravel's morphs(): `relations.key_type` = int (default), uuid, ulid or string.
+            match (config('filament-mail-log.relations.key_type', 'int')) {
+                'uuid' => $table->uuid('related_id'),
+                'ulid' => $table->ulid('related_id'),
+                'string' => $table->string('related_id', 64),
+                default => $table->unsignedBigInteger('related_id'),
+            };
 
             $table->primary(['mail_log_id', 'related_type', 'related_id'], 'ml_relations_pk');
             $table->index(['related_type', 'related_id'], 'ml_relations_related_idx');

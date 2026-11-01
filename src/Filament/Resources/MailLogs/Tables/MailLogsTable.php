@@ -8,6 +8,7 @@ use Asignua\FilamentMailLog\Enums\DeliveryStatus;
 use Asignua\FilamentMailLog\Enums\MailStatus;
 use Asignua\FilamentMailLog\Filament\Actions\ResendAction;
 use Asignua\FilamentMailLog\Models\MailLog;
+use Asignua\FilamentMailLog\Models\MailLogRelation;
 use Asignua\FilamentMailLog\Repositories\MailLogRelationRepository;
 use Asignua\FilamentMailLog\Repositories\MailLogRepository;
 use Asignua\FilamentMailLog\Support\MailTypes;
@@ -175,9 +176,16 @@ class MailLogsTable
             return $query;
         }
 
+        // An id the column can not hold (letters with `key_type` = int) matches nothing; it must not reach the database.
+        $key = $id === null ? null : MailLogRelation::normalizeKey($id);
+
+        if ($id !== null && $key === null) {
+            return $query->whereRaw('1 = 0');
+        }
+
         return $query->whereIn('id', app(MailLogRelationRepository::class)->query()
             ->when($type !== null, fn (Builder $q): Builder => $q->where('related_type', $type))
-            ->when($id !== null, fn (Builder $q): Builder => $q->where('related_id', $id))
+            ->when($key !== null, fn (Builder $q): Builder => $q->where('related_id', $key))
             ->select('mail_log_id'));
     }
 

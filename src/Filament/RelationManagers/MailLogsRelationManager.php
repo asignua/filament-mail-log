@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Asignua\FilamentMailLog\Filament\RelationManagers;
 
+use Asignua\FilamentMailLog\Filament\Resources\MailLogs\MailLogResource;
 use Asignua\FilamentMailLog\Filament\Resources\MailLogs\Tables\MailLogsTable;
 use Asignua\FilamentMailLog\MailLogPlugin;
 use Asignua\FilamentMailLog\Support\TrackingSchema;
@@ -26,6 +27,9 @@ class MailLogsRelationManager extends RelationManager
     protected static string $relationship = 'mailLogs';
 
     protected static ?string $recordTitleAttribute = 'subject';
+
+    /** "View" opens the message page of the log. Without it the action is an empty modal that puts the whole message (bodies, headers) into the Livewire snapshot. */
+    protected static ?string $relatedResource = MailLogResource::class;
 
     public static function getTitle(Model $ownerRecord, string $pageClass): string
     {

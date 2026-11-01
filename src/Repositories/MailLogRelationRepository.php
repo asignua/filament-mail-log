@@ -7,7 +7,6 @@ namespace Asignua\FilamentMailLog\Repositories;
 use Asignua\FilamentMailLog\Models\MailLog;
 use Asignua\FilamentMailLog\Models\MailLogRelation;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Model;
 
 /**
  * Queries of the links between messages and models.
@@ -23,21 +22,22 @@ class MailLogRelationRepository
     }
 
     /**
-     * Links the message to the models. Idempotent: the same pair is stored once (the message is described at the
-     * queue and again when the worker sends it).
+     * Links the message to the models, given as `[morph class, key]` pairs (see {@see \Asignua\FilamentMailLog\Support\MailRelations}).
+     * Idempotent: the same pair is stored once (the message is described at the queue and again when the worker
+     * sends it). A key the column can not hold (a UUID with `key_type` = int) is skipped.
      *
-     * @param iterable<Model> $models
+     * @param iterable<array{0: string, 1: int|string}> $refs
      */
-    public function attach(MailLog $log, iterable $models): void
+    public function attach(MailLog $log, iterable $refs): void
     {
         $rows = [];
 
-        foreach ($models as $model) {
-            $rows[] = [
-                'mail_log_id' => (int) $log->getKey(),
-                'related_type' => mb_substr($model->getMorphClass(), 0, 120),
-                'related_id' => mb_substr((string) $model->getKey(), 0, 64),
-            ];
+        foreach ($refs as [$type, $key]) {
+            $key = MailLogRelation::normalizeKey($key);
+
+            if ($key !== null) {
+                $rows[] = ['mail_log_id' => (int) $log->getKey(), 'related_type' => mb_substr($type, 0, 120), 'related_id' => $key];
+            }
         }
 
         if ($rows !== []) {

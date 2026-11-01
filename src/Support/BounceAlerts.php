@@ -7,6 +7,7 @@ namespace Asignua\FilamentMailLog\Support;
 use Asignua\FilamentMailLog\Enums\BounceType;
 use Asignua\FilamentMailLog\Enums\DeliveryEventType;
 use Asignua\FilamentMailLog\Filament\Resources\MailLogs\MailLogResource;
+use Asignua\FilamentMailLog\Jobs\DeliverBounceAlert;
 use Asignua\FilamentMailLog\Mail\BounceAlertMail;
 use Asignua\FilamentMailLog\MailLogPlugin;
 use Asignua\FilamentMailLog\Models\MailLog;
@@ -41,11 +42,15 @@ final class BounceAlerts
 
     private const string CACHE = 'filament-mail-log:alerts:';
 
+    private const int HELD_NAMES = 20;
+
     /** @var (Closure(): iterable<Authenticatable>)|null */
     private static ?Closure $recipients = null;
 
     /**
-     * Replaces the gate lookup with your own list of users (e.g. one team, one role). Return the users to notify.
+     * RECOMMENDED for any site with more than a few hundred users. Replaces the gate lookup with your own list of
+     * users (one team, one role, a query that selects the few admins): the gate has to be asked about each user, so
+     * without this the alert job walks the users table (bounded by `alerts.scan_limit`). Return the users to notify.
      *
      * @param (Closure(): iterable<Authenticatable>)|null $callback
      */
@@ -76,15 +81,29 @@ final class BounceAlerts
 
             $address = mb_strtolower((string) ($event->recipient ?? ($log !== null ? $log->recipient : '')));
 
-            if (!$this->pass($address)) {
+            $held = $this->pass($address);
+
+            if ($held === null) {
                 return false;
             }
 
-            $held = (int) Cache::pull(self::CACHE.'held', 0);
-            [$title, $body] = $this->text($event, $log, $kinds, $address, $held, $newlySuppressed);
+            [$title, $lines] = $this->text($event, $log, $kinds, $address, $held, $newlySuppressed);
 
-            $this->notifyDatabase($title, $body, $log);
-            $this->notifyMail($title, $body);
+            // Only the cheap cache work above runs in the webhook request; the user lookup and the mail are a job.
+            $job = new DeliverBounceAlert($title, $lines, $log === null ? null : (int) $log->getKey());
+            $queue = (array) config('filament-mail-log.alerts.queue', []);
+            $connection = $queue['connection'] ?? null;
+            $name = $queue['name'] ?? null;
+
+            if (is_string($connection) && $connection !== '') {
+                $job->onConnection($connection);
+            }
+
+            if (is_string($name) && $name !== '') {
+                $job->onQueue($name);
+            }
+
+            dispatch($job);
 
             return true;
         } catch (Throwable $e) {
@@ -124,42 +143,81 @@ final class BounceAlerts
     }
 
     /**
-     * The throttle. The address check comes first, so an address that is already quiet does not use up the ceiling.
+     * The throttle. Returns what was held back since the last alert (null = this alert is throttled).
+     *
+     * A quiet address is checked first WITHOUT being consumed, so an address that the ceiling holds back is not muted
+     * and does not use up the ceiling twice; it is marked only when its alert really goes out. The ceiling counts in
+     * a window-numbered key (`count:<n>`): the key always gets its TTL at creation and is never reused, so a key that
+     * expired between `add` and `increment` can only leak one dead bucket, never hold alerts forever.
+     *
+     * @return array{count: int, addresses: list<string>}|null
      */
-    private function pass(string $address): bool
+    private function pass(string $address): ?array
     {
         $throttle = (array) config('filament-mail-log.alerts.throttle', []);
         $perAddress = max(0, (int) ($throttle['per_address_minutes'] ?? 60));
         $max = max(0, (int) ($throttle['max'] ?? 10));
-        $window = max(1, (int) ($throttle['window_minutes'] ?? 60));
+        $window = max(1, (int) ($throttle['window_minutes'] ?? 60)) * 60;
+        $bucket = intdiv(now()->getTimestamp(), $window);
+        $addressKey = self::CACHE.'addr:'.sha1($address);
 
-        if ($perAddress > 0 && $address !== '' && !Cache::add(self::CACHE.'addr:'.sha1($address), 1, now()->addMinutes($perAddress))) {
-            return false;
+        if ($perAddress > 0 && $address !== '' && Cache::has($addressKey)) {
+            return null;
         }
 
-        if ($max === 0) {
-            return true;
+        if ($max > 0) {
+            Cache::add(self::CACHE.'count:'.$bucket, 0, now()->addSeconds($window * 2));
+            $count = Cache::increment(self::CACHE.'count:'.$bucket);
+
+            if (is_int($count) && $count > $max) {
+                $this->hold($address, $window);
+
+                return null;
+            }
         }
 
-        Cache::add(self::CACHE.'count', 0, now()->addMinutes($window));
-        $count = Cache::increment(self::CACHE.'count');
-
-        if (is_int($count) && $count > $max) {
-            Cache::add(self::CACHE.'held', 0, now()->addMinutes($window * 2));
-            Cache::increment(self::CACHE.'held');
-
-            return false;
+        if ($perAddress > 0 && $address !== '') {
+            Cache::put($addressKey, 1, now()->addMinutes($perAddress));
         }
 
-        return true;
+        return $this->takeHeld();
     }
 
     /**
-     * @param list<string> $kinds
-     *
-     * @return array{0: string, 1: string}
+     * A single entry with its own TTL on every write (`put`), so it can never outlive the alerts it is about.
      */
-    private function text(DeliveryEvent $event, ?MailLog $log, array $kinds, string $address, int $held, bool $newlySuppressed): array
+    private function hold(string $address, int $window): void
+    {
+        $held = (array) Cache::get(self::CACHE.'held', []);
+        $addresses = array_values(array_filter((array) ($held['addresses'] ?? []), is_string(...)));
+
+        if ($address !== '' && !in_array($address, $addresses, true) && count($addresses) < self::HELD_NAMES) {
+            $addresses[] = $address;
+        }
+
+        Cache::put(self::CACHE.'held', ['count' => (int) ($held['count'] ?? 0) + 1, 'addresses' => $addresses], now()->addSeconds($window * 3));
+    }
+
+    /**
+     * @return array{count: int, addresses: list<string>}
+     */
+    private function takeHeld(): array
+    {
+        $held = (array) Cache::pull(self::CACHE.'held', []);
+
+        return [
+            'count' => (int) ($held['count'] ?? 0),
+            'addresses' => array_values(array_filter((array) ($held['addresses'] ?? []), is_string(...))),
+        ];
+    }
+
+    /**
+     * @param list<string>                               $kinds
+     * @param array{count: int, addresses: list<string>} $held
+     *
+     * @return array{0: string, 1: list<string>}
+     */
+    private function text(DeliveryEvent $event, ?MailLog $log, array $kinds, string $address, array $held, bool $newlySuppressed): array
     {
         $t = static fn (string $key, array $replace = []): string => __('filament-mail-log::filament-mail-log.alerts.'.$key, $replace);
 
@@ -181,14 +239,30 @@ final class BounceAlerts
             $lines[] = $t('line_suppressed');
         }
 
-        if ($held > 0) {
-            $lines[] = $t('line_held', ['count' => $held]);
+        if ($held['count'] > 0) {
+            $lines[] = $t('line_held', ['count' => $held['count'], 'addresses' => $held['addresses'] === [] ? '—' : implode(', ', $held['addresses'])]);
         }
 
-        return [$title, implode("\n", $lines)];
+        return [$title, $lines];
     }
 
-    private function notifyDatabase(string $title, string $body, ?MailLog $log): void
+    /**
+     * The delivery half, run by {@see DeliverBounceAlert}: database notifications and the mail.
+     *
+     * @param list<string> $lines
+     */
+    public function deliver(string $title, array $lines, ?int $mailLogId): void
+    {
+        $log = $mailLogId === null ? null : MailLog::query()->find($mailLogId);
+
+        $this->notifyDatabase($title, $lines, $log);
+        $this->notifyMail($title, implode("\n", $lines));
+    }
+
+    /**
+     * @param list<string> $lines
+     */
+    private function notifyDatabase(string $title, array $lines, ?MailLog $log): void
     {
         if (!(bool) config('filament-mail-log.alerts.database', true)) {
             return;
@@ -200,6 +274,8 @@ final class BounceAlerts
             return;
         }
 
+        // The body is sanitized HTML: one line per <br> (each line escaped), a plain "\n" would render as a single line in the notification.
+        $body = implode('<br>', array_map(e(...), $lines));
         $notification = Notification::make()->title($title)->body($body)->danger();
         $url = $log === null ? null : $this->logUrl($log);
 
@@ -255,14 +331,27 @@ final class BounceAlerts
             return [];
         }
 
+        // Bounded: the scan walks the users table in chunks and stops at `max_recipients` allowed users or at
+        // `scan_limit` users looked at, whichever comes first. A site with thousands of users should use
+        // `recipientsUsing()` (one query for the few people who must know) instead of the gate.
+        $scanLimit = max(1, (int) config('filament-mail-log.alerts.scan_limit', 1000));
         $users = [];
+        $scanned = 0;
 
-        $class::query()->orderBy((new $class)->getKeyName())->each(function (Model $user) use (&$users, $gate, $ability, $max): bool {
-            if ($user instanceof Authenticatable && $gate->forUser($user)->allows($ability)) {
-                $users[] = $user;
+        $class::query()->chunkById(100, function ($chunk) use (&$users, &$scanned, $gate, $ability, $max, $scanLimit): bool {
+            foreach ($chunk as $user) {
+                $scanned++;
+
+                if ($user instanceof Authenticatable && $gate->forUser($user)->allows($ability)) {
+                    $users[] = $user;
+                }
+
+                if (count($users) >= $max || $scanned >= $scanLimit) {
+                    return false;
+                }
             }
 
-            return count($users) < $max;
+            return true;
         });
 
         return $users;

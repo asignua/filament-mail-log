@@ -19,7 +19,7 @@ class OrderShipped extends Mailable implements RelatesToMailLog
 
     public function mailLogRelations(): iterable
     {
-        return [$this->order, ...$this->mailLogRelated];
+        return [$this->order];
     }
 
     public function envelope(): Envelope

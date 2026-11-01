@@ -7,15 +7,18 @@ namespace Asignua\FilamentMailLog\Tests\Feature;
 use Asignua\FilamentMailLog\Enums\BounceType;
 use Asignua\FilamentMailLog\Enums\DeliveryEventType;
 use Asignua\FilamentMailLog\Enums\MailStatus;
+use Asignua\FilamentMailLog\Jobs\DeliverBounceAlert;
 use Asignua\FilamentMailLog\Mail\BounceAlertMail;
 use Asignua\FilamentMailLog\Models\MailLog;
 use Asignua\FilamentMailLog\Support\BounceAlerts;
 use Asignua\FilamentMailLog\Support\DeliveryTracker;
 use Asignua\FilamentMailLog\Tests\TestCase;
 use Asignua\FilamentMailLog\Webhooks\DeliveryEvent;
+use Illuminate\Notifications\DatabaseNotification;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Workbench\App\Models\User;
 
@@ -150,12 +153,14 @@ class BounceAlertsTest extends TestCase
 
         $this->assertSame(2, $this->alerts($this->admin));
 
-        Cache::forget('filament-mail-log:alerts:count');
+        $this->travel(2)->hours();
         $this->report($this->log('e@example.test'));
 
         $this->assertSame(3, $this->alerts($this->admin));
         $body = $this->admin->notifications()->latest('created_at')->get()->map(fn ($n): string => $n->data['body'])->implode("\n");
         $this->assertStringContainsString('2 more alerts', $body);
+        $this->assertStringContainsString('c@example.test', $body);
+        $this->assertStringContainsString('d@example.test', $body);
     }
 
     public function test_the_mail_goes_to_the_configured_addresses_only(): void
@@ -217,5 +222,77 @@ class BounceAlertsTest extends TestCase
         $this->report($log);
 
         $this->assertSame(\Asignua\FilamentMailLog\Enums\DeliveryStatus::Bounced, $log->fresh()->delivery_status);
+    }
+
+    public function test_a_held_address_is_not_muted(): void
+    {
+        config()->set('filament-mail-log.alerts.throttle.max', 1);
+
+        $this->report($this->log('a@example.test'));
+        $this->report($this->log('b@example.test'));
+        $this->assertSame(1, $this->alerts($this->admin));
+
+        $this->travel(2)->hours();
+        $this->report($this->log('b@example.test'));
+
+        $this->assertSame(2, $this->alerts($this->admin));
+    }
+
+    public function test_an_address_that_is_quiet_does_not_use_up_the_ceiling(): void
+    {
+        config()->set('filament-mail-log.alerts.throttle.max', 2);
+
+        $this->report($this->log('a@example.test'));
+        $this->report($this->log('a@example.test'));
+        $this->report($this->log('a@example.test'));
+        $this->report($this->log('b@example.test'));
+
+        $this->assertSame(2, $this->alerts($this->admin));
+    }
+
+    public function test_the_webhook_only_enqueues_the_alert(): void
+    {
+        Queue::fake();
+
+        $this->report($this->log());
+
+        Queue::assertPushed(DeliverBounceAlert::class, fn (DeliverBounceAlert $job): bool => $job->mailLogId !== null);
+        $this->assertSame(0, $this->alerts($this->admin));
+    }
+
+    public function test_the_body_keeps_its_lines_apart(): void
+    {
+        $this->report($this->log());
+
+        $body = $this->admin->notifications()->firstOrFail()->data['body'];
+        $this->assertStringContainsString('<br>', (string) $body);
+        $this->assertStringNotContainsString("\n", (string) $body);
+    }
+
+    public function test_the_gate_scan_is_bounded(): void
+    {
+        config()->set('filament-mail-log.alerts.scan_limit', 3);
+        config()->set('filament-mail-log.alerts.max_recipients', 50);
+        Gate::define('receiveMailLogAlerts', fn (User $user): bool => true);
+        User::factory()->count(10)->create();
+        $asked = 0;
+        Gate::after(function () use (&$asked): void {
+            $asked++;
+        });
+
+        $this->report($this->log());
+
+        $this->assertSame(3, $asked);
+    }
+
+    public function test_the_scan_stops_at_the_recipient_cap(): void
+    {
+        config()->set('filament-mail-log.alerts.max_recipients', 2);
+        Gate::define('receiveMailLogAlerts', fn (User $user): bool => true);
+        User::factory()->count(5)->create();
+
+        $this->report($this->log());
+
+        $this->assertSame(2, DatabaseNotification::query()->count());
     }
 }

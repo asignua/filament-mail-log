@@ -19,6 +19,9 @@ use Asignua\FilamentMailLog\Support\MailRelations;
  *         public function mailLogRelations(): iterable { return [$this->order, $this->order->customer]; }
  *     }
  *
+ * A Mailable that overrides `additionalMessageData()` itself must call this trait's version (alias it:
+ * `use HasMailLogRelations { additionalMessageData as protected mailLogAdditionalMessageData; }`) or the links are lost.
+ *
  * The mail events do not carry the Mailable itself, so the models travel in the view data (like Laravel's own
  * `__laravel_mailable`) under the key {@see MailRelations::DATA_KEY}. They never reach the message that is sent.
  */
@@ -32,7 +35,7 @@ trait HasMailLogRelations
     protected function additionalMessageData(): array
     {
         return array_merge(parent::additionalMessageData(), [
-            MailRelations::DATA_KEY => MailRelations::models($this->mailLogRelations()),
+            MailRelations::DATA_KEY => MailRelations::declaredBy($this),
         ]);
     }
 }

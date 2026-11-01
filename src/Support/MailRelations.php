@@ -21,11 +21,13 @@ use Illuminate\Notifications\SendQueuedNotifications;
  */
 final class MailRelations
 {
+    // A relation is carried around as a `[morph class, key]` pair, never as the model: a model in a queued
+    // payload would drag all its attributes (personal data) along, and a deleted one would still look saved.
     public const string DATA_KEY = '__mail_log_relations';
 
     private const int REMEMBER_LIMIT = 100;
 
-    /** @var array<string, list<Model>> notification id => models */
+    /** @var array<string, list<array{0: string, 1: int|string}>> notification id => refs */
     private static array $notifications = [];
 
     public static function reset(): void
@@ -48,16 +50,16 @@ final class MailRelations
             return;
         }
 
-        $models = self::models([
+        $refs = self::refs([
             ...self::declared($event->notification),
             ...self::notifiable($event->notifiable),
         ]);
 
-        if ($models === []) {
+        if ($refs === []) {
             return;
         }
 
-        self::$notifications[$id] = $models;
+        self::$notifications[$id] = $refs;
 
         if (count(self::$notifications) > self::REMEMBER_LIMIT) {
             array_shift(self::$notifications);
@@ -69,7 +71,7 @@ final class MailRelations
      *
      * @param array<array-key, mixed> $data the view data of the `MessageSending` event
      *
-     * @return list<Model>
+     * @return list<array{0: string, 1: int|string}>
      */
     public static function forSending(array $data): array
     {
@@ -77,36 +79,36 @@ final class MailRelations
             return [];
         }
 
-        $models = [];
+        $refs = [];
         $declared = $data[self::DATA_KEY] ?? null;
 
         if (is_iterable($declared)) {
-            $models = [...$declared];
+            $refs = [...$declared];
         }
 
         $id = $data['__laravel_notification_id'] ?? null;
 
         if (is_string($id) && isset(self::$notifications[$id])) {
-            $models = [...$models, ...self::$notifications[$id]];
+            $refs = [...$refs, ...self::$notifications[$id]];
         }
 
-        return self::models($models);
+        return self::refs($refs);
     }
 
     /**
      * The models of a mailable that has just been queued.
      *
-     * @return list<Model>
+     * @return list<array{0: string, 1: int|string}>
      */
     public static function forQueuedMailable(Mailable $mailable): array
     {
-        return self::enabled() ? self::models(self::declared($mailable)) : [];
+        return self::enabled() ? self::refs(self::declared($mailable)) : [];
     }
 
     /**
      * The models of a notification that has just been queued.
      *
-     * @return list<Model>
+     * @return list<array{0: string, 1: int|string}>
      */
     public static function forQueuedNotification(SendQueuedNotifications $job): array
     {
@@ -114,44 +116,72 @@ final class MailRelations
             return [];
         }
 
-        $models = self::declared($job->notification);
+        $refs = self::declared($job->notification);
 
         foreach ($job->notifiables as $notifiable) {
-            $models = [...$models, ...self::notifiable($notifiable)];
+            $refs = [...$refs, ...self::notifiable($notifiable)];
         }
 
-        return self::models($models);
+        return self::refs($refs);
     }
 
     /**
-     * Only saved models, once each, no more than `relations.max`.
+     * The `[morph class, key]` pair of a saved model; null for an unsaved one.
      *
-     * @param iterable<mixed> $items
-     *
-     * @return list<Model>
+     * @return array{0: string, 1: int|string}|null
      */
-    public static function models(iterable $items): array
+    public static function refOf(mixed $model): ?array
+    {
+        if (!$model instanceof Model || !$model->exists || !is_scalar($model->getKey())) {
+            return null;
+        }
+
+        $key = $model->getKey();
+
+        return [$model->getMorphClass(), is_int($key) ? $key : (string) $key];
+    }
+
+    /**
+     * Only valid pairs (a model counts as its pair), once each, no more than `relations.max`.
+     *
+     * @param iterable<mixed> $items models and / or `[morph class, key]` pairs
+     *
+     * @return list<array{0: string, 1: int|string}>
+     */
+    public static function refs(iterable $items): array
     {
         $max = max(1, (int) config('filament-mail-log.relations.max', 20));
-        $models = [];
+        $refs = [];
 
         foreach ($items as $item) {
-            if (!$item instanceof Model || !$item->exists || $item->getKey() === null) {
+            $ref = $item instanceof Model ? self::refOf($item) : $item;
+
+            if (!is_array($ref) || !isset($ref[0], $ref[1]) || !is_string($ref[0]) || !is_scalar($ref[1]) || (string) $ref[1] === '') {
                 continue;
             }
 
-            $models[$item->getMorphClass().'#'.$item->getKey()] ??= $item;
+            $refs[$ref[0].'#'.$ref[1]] ??= [$ref[0], is_int($ref[1]) ? $ref[1] : (string) $ref[1]];
 
-            if (count($models) >= $max) {
+            if (count($refs) >= $max) {
                 break;
             }
         }
 
-        return array_values($models);
+        return array_values($refs);
     }
 
     /**
-     * @return list<Model>
+     * What a Mailable / Notification declares: the models of `mailLogRelations()` plus the pairs of `relatedTo()`.
+     *
+     * @return list<array{0: string, 1: int|string}>
+     */
+    public static function declaredBy(object $source): array
+    {
+        return self::declared($source);
+    }
+
+    /**
+     * @return list<array{0: string, 1: int|string}>
      */
     private static function declared(object $source): array
     {
@@ -159,17 +189,21 @@ final class MailRelations
             return [];
         }
 
-        $models = [];
+        $items = [];
 
         foreach ($source->mailLogRelations() as $model) {
-            $models[] = $model;
+            $items[] = $model;
         }
 
-        return self::models($models);
+        if (method_exists($source, 'mailLogRelatedRefs')) {
+            $items = [...$items, ...(array) $source->mailLogRelatedRefs()];
+        }
+
+        return self::refs($items);
     }
 
     /**
-     * @return list<Model>
+     * @return list<array{0: string, 1: int|string}>
      */
     private static function notifiable(mixed $notifiable): array
     {
@@ -177,7 +211,7 @@ final class MailRelations
             return [];
         }
 
-        return self::models([$notifiable]);
+        return self::refs([$notifiable]);
     }
 
     private static function enabled(): bool

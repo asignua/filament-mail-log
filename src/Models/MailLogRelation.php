@@ -14,7 +14,7 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
  *
  * @property int $mail_log_id
  * @property string $related_type
- * @property string $related_id
+ * @property int|string $related_id
  */
 class MailLogRelation extends Model
 {
@@ -32,6 +32,22 @@ class MailLogRelation extends Model
     public function getConnectionName(): ?string
     {
         return LogConnection::name();
+    }
+
+    /**
+     * A key as the `related_id` column stores it (`relations.key_type`); null when it can not be stored there.
+     */
+    public static function normalizeKey(mixed $key): int|string|null
+    {
+        if (!is_scalar($key) || (string) $key === '') {
+            return null;
+        }
+
+        if (!in_array(config('filament-mail-log.relations.key_type', 'int'), ['uuid', 'ulid', 'string'], true)) {
+            return is_int($key) || (is_string($key) && ctype_digit($key)) ? (int) $key : null;
+        }
+
+        return mb_substr((string) $key, 0, 64);
     }
 
     /**

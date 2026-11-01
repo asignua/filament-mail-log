@@ -142,7 +142,7 @@ return [
         'line_provider' => 'Reported by: :provider',
         'line_detail' => 'Details: :detail',
         'line_suppressed' => 'The address was added to the suppression list.',
-        'line_held' => ':count more alerts were held back by the throttle since the last one.',
+        'line_held' => ':count more alerts were held back by the throttle since the last one (:addresses).',
         'open' => 'Open the message',
     ],
     'preview' => [
