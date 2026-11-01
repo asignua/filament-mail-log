@@ -187,7 +187,8 @@ return [
          * Type of the `related_id` column, like the `morphs()` family of Laravel: `int` (unsignedBigInteger, the
          * default), `uuid`, `ulid` or `string`. Pick the one your related models' primary keys use; a typed column
          * is what lets `with('mailLogs')`, `withCount()` and `whereHas()` compare keys without a cast (PostgreSQL
-         * refuses `varchar = integer`). Models with DIFFERENT key types need `string`; then, on PostgreSQL, those
+         * refuses `varchar = integer`). Models with DIFFERENT key types need `string` (the automatically related notifiable counts: a User with an integer id
+         * next to uuid Orders is skipped with `uuid`; use `string` or `relations.notifiable` = false). Then, on PostgreSQL, those
          * three calls need the keys cast by hand. Read when the migration runs, so decide before migrating.
          */
         'key_type' => env('MAIL_LOG_RELATIONS_KEY_TYPE', 'int'),

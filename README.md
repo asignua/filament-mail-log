@@ -255,7 +255,9 @@ $user->notify(new OrderPaid);          // linked to $user
 overrides `additionalMessageData()` itself must call the trait's version (alias it with `use HasMailLogRelations { additionalMessageData as protected mailLogAdditionalMessageData; }`),
 or its links are lost.
 
-**Key type.** `related_id` is typed like Laravel's `morphs()`: `relations.key_type` = `int` (default, unsigned bigint),
+**Key type.** A key the column can not hold is skipped, never written: with `uuid`, a related `User` with an integer id (notifiables are related automatically) gets no link; use `string`, or set `relations.notifiable` to `false`.
+
+**Key type (details).** `related_id` is typed like Laravel's `morphs()`: `relations.key_type` = `int` (default, unsigned bigint),
 `uuid`, `ulid` or `string`. Pick the one your models' primary keys use **before migrating**: it is what lets
 `Order::with('mailLogs')`, `withCount('mailLogs')` and `whereHas('mailLogs')` compare keys without a cast. PostgreSQL
 refuses `varchar = integer`, so on PostgreSQL a `string` column works only when every related model uses a string key
@@ -296,6 +298,8 @@ many users, name the recipients yourself with one query, from a service provider
 ```php
 BounceAlerts::recipientsUsing(fn () => User::query()->role('admin')->get());
 ```
+
+Register it in a service provider's `boot()`, not in a route or a panel callback: the alert is delivered in the queue worker, a separate process that never runs your request code. If the scan hits `alerts.scan_limit` without finding anyone, a `notice` is written to the log.
 
 Alerts are throttled: one per address per `per_address_minutes`, and at most `max` per `window_minutes` (uses the cache,
 so it needs a shared one in production); the alerts held back are counted, and their addresses named, in the next one. A redelivered webhook never

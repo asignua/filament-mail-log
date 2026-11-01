@@ -8,6 +8,7 @@ use Asignua\FilamentMailLog\Support\LogConnection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
+use Illuminate\Support\Str;
 
 /**
  * A link between a logged message and a model it is about.
@@ -43,11 +44,16 @@ class MailLogRelation extends Model
             return null;
         }
 
-        if (!in_array(config('filament-mail-log.relations.key_type', 'int'), ['uuid', 'ulid', 'string'], true)) {
-            return is_int($key) || (is_string($key) && ctype_digit($key)) ? (int) $key : null;
-        }
+        $type = config('filament-mail-log.relations.key_type', 'int');
+        $text = (string) $key;
 
-        return mb_substr((string) $key, 0, 64);
+        // Validated per column type: PostgreSQL refuses a malformed uuid with an error, MariaDB stores zeros silently.
+        return match ($type) {
+            'uuid' => Str::isUuid($text) ? $text : null,
+            'ulid' => Str::isUlid($text) ? $text : null,
+            'string' => mb_substr($text, 0, 64),
+            default => is_int($key) || ctype_digit($text) ? (int) $key : null,
+        };
     }
 
     /**

@@ -354,6 +354,10 @@ final class BounceAlerts
             return true;
         });
 
+        if ($users === [] && $scanned >= $scanLimit) {
+            Log::notice("filament-mail-log: the bounce alert found no recipient among the first {$scanned} users (alerts.scan_limit). Use BounceAlerts::recipientsUsing() or raise the limit.");
+        }
+
         return $users;
     }
 

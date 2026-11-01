@@ -252,7 +252,10 @@ class RelationsTest extends TestCase
 
     public function test_the_key_column_is_an_integer_by_default(): void
     {
-        $this->assertSame('integer', \Illuminate\Support\Facades\Schema::getColumnType('mail_log_relations', 'related_id'));
+        $type = strtolower(\Illuminate\Support\Facades\Schema::getColumnType('mail_log_relations', 'related_id'));
+
+        // `integer` on SQLite, `bigint` on MariaDB / MySQL, `int8` on PostgreSQL.
+        $this->assertContains($type, ['integer', 'int', 'bigint', 'int8']);
     }
 
     public function test_a_string_key_type_stores_string_keys(): void
@@ -341,5 +344,48 @@ class RelationsTest extends TestCase
 
         $this->assertArrayHasKey('extra', $data);
         $this->assertArrayHasKey(\Asignua\FilamentMailLog\Support\MailRelations::DATA_KEY, $data);
+    }
+
+    public function test_keys_are_validated_per_column_type(): void
+    {
+        $uuid = '0198f3a2-7c1e-7d3a-9b2e-5f4a6c8d1e02';
+        $ulid = '01K8Z3Q5R7T9V2X4B6D8F0H1J3';
+
+        config()->set('filament-mail-log.relations.key_type', 'uuid');
+        $this->assertSame($uuid, MailLogRelation::normalizeKey($uuid));
+        $this->assertNull(MailLogRelation::normalizeKey('abc'));
+        $this->assertNull(MailLogRelation::normalizeKey(5));
+
+        config()->set('filament-mail-log.relations.key_type', 'ulid');
+        $this->assertSame($ulid, MailLogRelation::normalizeKey($ulid));
+        $this->assertNull(MailLogRelation::normalizeKey('abc'));
+        $this->assertNull(MailLogRelation::normalizeKey($uuid));
+
+        config()->set('filament-mail-log.relations.key_type', 'int');
+        $this->assertSame(12, MailLogRelation::normalizeKey('12'));
+        $this->assertNull(MailLogRelation::normalizeKey('abc'));
+        $this->assertNull(MailLogRelation::normalizeKey('1.5'));
+    }
+
+    public function test_a_uuid_filter_with_text_matches_nothing_without_a_query_error(): void
+    {
+        $order = $this->order();
+        Mail::to('ann@example.test')->send(new OrderShipped($order));
+        config()->set('filament-mail-log.relations.key_type', 'uuid');
+
+        Livewire::test(ListMailLogs::class)
+            ->filterTable('related', ['related_type' => $order->getMorphClass(), 'related_id' => 'abc'])
+            ->assertCountTableRecords(0);
+    }
+
+    public function test_a_pair_the_column_cannot_hold_is_skipped_but_valid_ones_in_the_batch_are_kept(): void
+    {
+        config()->set('filament-mail-log.relations.key_type', 'uuid');
+        $log = MailLog::query()->create(['ulid' => 'Y', 'status' => 'sent', 'recipient' => 'a@example.test']);
+        $uuid = '0198f3a2-7c1e-7d3a-9b2e-5f4a6c8d1e02';
+
+        app(\Asignua\FilamentMailLog\Repositories\MailLogRelationRepository::class)->attach($log, [['App\\User', 5], ['App\\Thing', $uuid]]);
+
+        $this->assertSame([$uuid], MailLogRelation::query()->pluck('related_id')->all());
     }
 }
