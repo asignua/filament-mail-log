@@ -305,6 +305,15 @@ vendor/bin/pint --test
 
 See [CHANGELOG.md](CHANGELOG.md).
 
+## More plugins by asign
+
+- [Chat](https://filamentphp.com/plugins/asign-chat) — realtime conversations inside the panel
+- [Activity Log Plus](https://filamentphp.com/plugins/asign-activity-log-plus) — audit trail and history for models
+- [Captcha](https://filamentphp.com/plugins/asign-captcha) — reCAPTCHA and Turnstile fields
+- [Themes](https://filamentphp.com/plugins/asign-themes) — per-user and per-panel colour themes
+
+All plugins: <https://filamentphp.com/plugins?q=asign>
+
 ## License
 
 The MIT License (MIT). See [LICENSE.md](LICENSE.md).
