@@ -1,0 +1,15 @@
+{
+    "base": "http://host.docker.internal:8771",
+    "login": {
+        "path": "/admin/login",
+        "email": "emma@example.com",
+        "password": "password"
+    },
+    "shots": [
+        {
+            "path": "/admin/orders/1",
+            "out": "relations.jpg",
+            "waitFor": "text=How was order SO-88213?"
+        }
+    ]
+}

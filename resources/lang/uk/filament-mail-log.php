@@ -40,6 +40,10 @@ return [
         'detail' => 'Подробиці',
     ],
     'filters' => [
+        'related' => 'Пов’язаний запис',
+        'related_type' => 'Модель',
+        'related_id' => 'ID запису',
+        'any' => 'Будь-яка',
         'recipient' => 'Одержувач містить',
         'body' => 'Текст у листі',
         'from' => 'Від',
@@ -52,6 +56,8 @@ return [
         'headers' => 'Заголовки',
     ],
     'sections' => [
+        'related' => 'Пов’язані записи',
+        'related_help' => 'Записи, яких стосується цей лист.',
         'error' => 'Помилка',
         'attachments' => 'Вкладення',
         'delivery_events' => 'Події доставки',
@@ -123,6 +129,21 @@ return [
         'remove' => 'Видалити',
         'remove_heading' => 'Видалити зі списку блокувань',
         'remove_description' => 'Адреса знову отримуватиме листи, хоча на неї була відмова або скарга.',
+    ],
+    'relations' => [
+        'tab' => 'Листи',
+        'heading' => 'Листи про цей запис',
+        'empty' => 'До цього запису ще не пов’язано жодного листа',
+    ],
+    'alerts' => [
+        'title_bounce' => 'Лист на :address повернувся',
+        'title_complaint' => 'Скарга на спам від :address',
+        'line_subject' => 'Лист: :subject',
+        'line_provider' => 'Повідомив: :provider',
+        'line_detail' => 'Подробиці: :detail',
+        'line_suppressed' => 'Адресу додано до списку заблокованих.',
+        'line_held' => 'Ще :count сповіщень утримано обмеженням частоти з часу попереднього.',
+        'open' => 'Відкрити лист',
     ],
     'preview' => [
         'navigation' => 'Перегляд листів',

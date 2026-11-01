@@ -101,6 +101,16 @@ class MailLog extends Model
         return $this->hasMany(MailLogEvent::class, 'mail_log_id')->orderBy('occurred_at')->orderBy('id');
     }
 
+    /**
+     * The links to the models this message is about (see the `relations` config).
+     *
+     * @return HasMany<MailLogRelation, $this>
+     */
+    public function relatedLinks(): HasMany
+    {
+        return $this->hasMany(MailLogRelation::class, 'mail_log_id');
+    }
+
     protected function casts(): array
     {
         return [

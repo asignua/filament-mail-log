@@ -8,12 +8,15 @@ use Asignua\FilamentMailLog\Enums\DeliveryStatus;
 use Asignua\FilamentMailLog\Enums\MailStatus;
 use Asignua\FilamentMailLog\Filament\Actions\ResendAction;
 use Asignua\FilamentMailLog\Models\MailLog;
+use Asignua\FilamentMailLog\Repositories\MailLogRelationRepository;
 use Asignua\FilamentMailLog\Repositories\MailLogRepository;
 use Asignua\FilamentMailLog\Support\MailTypes;
+use Asignua\FilamentMailLog\Support\RelatedLabel;
 use Asignua\FilamentMailLog\Support\TrackingSchema;
 use Filament\Actions\ActionGroup;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Support\Facades\FilamentTimezone;
 use Filament\Tables\Columns\IconColumn;
@@ -107,6 +110,21 @@ class MailLogsTable
                         ),
                     )),
 
+                // Which record the message is about (see the `relations` config). Hidden until the table is migrated.
+                Filter::make('related')
+                    ->label($t('filters.related'))
+                    ->schema([
+                        Select::make('related_type')
+                            ->label($t('filters.related_type'))
+                            ->options(fn (): array => RelatedLabel::typeOptions())
+                            ->placeholder($t('filters.any')),
+                        TextInput::make('related_id')->label($t('filters.related_id')),
+                    ])
+                    ->columns(2)
+                    ->query(fn (Builder $query, array $data): Builder => self::relatedQuery($query, $data))
+                    ->indicateUsing(fn (array $data): array => self::relatedIndicators($data))
+                    ->visible(fn (): bool => TrackingSchema::hasRelationsTable()),
+
                 // The body is a longText: searching it is a separate, explicit filter, never part of the
                 // global search where every keystroke would scan the heaviest column.
                 Filter::make('body')
@@ -140,6 +158,41 @@ class MailLogsTable
             ])
             ->defaultSort('id', 'desc')
             ->paginated([25, 50, 100]);
+    }
+
+    /**
+     * @param Builder<MailLog>     $query
+     * @param array<string, mixed> $data
+     *
+     * @return Builder<MailLog>
+     */
+    private static function relatedQuery(Builder $query, array $data): Builder
+    {
+        $type = is_string($data['related_type'] ?? null) && $data['related_type'] !== '' ? $data['related_type'] : null;
+        $id = is_scalar($data['related_id'] ?? null) && trim((string) $data['related_id']) !== '' ? trim((string) $data['related_id']) : null;
+
+        if ($type === null && $id === null) {
+            return $query;
+        }
+
+        return $query->whereIn('id', app(MailLogRelationRepository::class)->query()
+            ->when($type !== null, fn (Builder $q): Builder => $q->where('related_type', $type))
+            ->when($id !== null, fn (Builder $q): Builder => $q->where('related_id', $id))
+            ->select('mail_log_id'));
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     *
+     * @return list<string>
+     */
+    private static function relatedIndicators(array $data): array
+    {
+        $type = is_string($data['related_type'] ?? null) && $data['related_type'] !== '' ? RelatedLabel::typeLabel($data['related_type']) : null;
+        $id = is_scalar($data['related_id'] ?? null) && trim((string) $data['related_id']) !== '' ? '#'.trim((string) $data['related_id']) : null;
+        $text = trim(($type ?? '').' '.($id ?? ''));
+
+        return $text === '' ? [] : [__('filament-mail-log::filament-mail-log.filters.related').': '.$text];
     }
 
     /**

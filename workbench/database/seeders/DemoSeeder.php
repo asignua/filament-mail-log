@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace Workbench\Database\Seeders;
 
 use Asignua\FilamentMailLog\Models\MailLog;
+use Asignua\FilamentMailLog\Repositories\MailLogRelationRepository;
 use Asignua\FilamentMailLog\Support\MailRedactor;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Str;
+use Workbench\App\Models\Order;
 use Workbench\App\Models\User;
 
 /**
@@ -77,6 +79,24 @@ class DemoSeeder extends Seeder
                 'text' => 'Thank you, order SO-88190 is confirmed.',
             ],
             [
+                'type' => 'App\\Mail\\OrderConfirmation', 'to' => 'dock@poznan-labels.example', 'subject' => 'Order SO-88213 confirmed',
+                'status' => 'sent', 'at' => $now->subDays(2)->subHours(3), 'delivery' => 'delivered',
+                'html' => $this->layout('Order confirmed', '<p>Thank you, order SO-88213 is confirmed.</p>'),
+                'text' => 'Thank you, order SO-88213 is confirmed.',
+            ],
+            [
+                'type' => 'App\\Notifications\\PaymentReceived', 'to' => 'dock@poznan-labels.example', 'subject' => 'Payment received for SO-88213',
+                'status' => 'sent', 'at' => $now->subDays(2), 'delivery' => 'opened',
+                'html' => $this->layout('Payment received', '<p>We received your payment for order SO-88213.</p>'),
+                'text' => 'We received your payment for order SO-88213.',
+            ],
+            [
+                'type' => 'App\\Mail\\ReviewRequest', 'to' => 'dock@poznan-labels.example', 'subject' => 'How was order SO-88213?',
+                'status' => 'sent', 'at' => $now->subHours(20), 'delivery' => 'bounced',
+                'html' => $this->layout('Review your order', '<p>Tell us how order SO-88213 went.</p>'),
+                'text' => 'Tell us how order SO-88213 went.',
+            ],
+            [
                 'type' => 'App\\Mail\\VerifyEmail', 'to' => 'm.horak@dnipro-pallets.example', 'subject' => 'Confirm your email address',
                 'status' => 'sent', 'at' => $now->subDays(3),
                 'html' => $this->layout('Confirm your email', '<p>Please confirm your email address.</p><p><a class="btn" href="'.str_replace('41/9c1f0d7ab2e84c55', '37/2b7e5d1c9a604f83', $verifyUrl).'">Verify email address</a></p>'),
@@ -98,7 +118,7 @@ class DemoSeeder extends Seeder
             $status = $row['status'];
             $to = $row['to'];
 
-            MailLog::query()->create([
+            $log = MailLog::query()->create([
                 'ulid' => (string) Str::ulid(),
                 'message_id' => $status === 'sent' ? sprintf('%s.%d@acme-supply.example', Str::lower(Str::random(20)), $i) : null,
                 'mailer' => 'smtp',
@@ -127,7 +147,40 @@ class DemoSeeder extends Seeder
                 'failed_at' => $status === 'failed' ? $at : null,
                 'created_at' => $at->subSeconds(2),
                 'updated_at' => $at,
+                'delivery_status' => $row['delivery'] ?? null,
+                'delivery_status_at' => isset($row['delivery']) ? $at->addMinutes(2) : null,
             ]);
+        }
+
+        $this->relate();
+    }
+
+    /**
+     * Orders, and the messages about them: the "Emails" tab of an order.
+     */
+    private function relate(): void
+    {
+        $orders = [
+            ['SO-88213', 'Poznan Labels', 'dock@poznan-labels.example', 428000],
+            ['SO-88190', 'Thames Cargo', 'orders@thames-cargo.example', 119500],
+            ['SO-88104', 'Kyivpack', 'dock@kyivpack.example', 76400],
+        ];
+
+        foreach ($orders as [$number, $name, $email, $total]) {
+            $order = Order::query()->create(['number' => $number, 'customer_name' => $name, 'customer_email' => $email, 'total_cents' => $total]);
+
+            $logs = MailLog::query()->where('subject', 'like', '%'.$number.'%')->get();
+
+            foreach ($logs as $log) {
+                app(MailLogRelationRepository::class)->attach($log, [$order]);
+            }
+        }
+
+        $emma = User::query()->where('email', 'emma@example.com')->first();
+        $invoice = MailLog::query()->where('subject', 'like', '%INV-2026-0412%')->first();
+
+        if ($emma !== null && $invoice !== null) {
+            app(MailLogRelationRepository::class)->attach($invoice, [$emma]);
         }
     }
 

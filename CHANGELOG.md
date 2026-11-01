@@ -2,6 +2,14 @@
 
 All notable changes to `asignua/filament-mail-log` are documented here.
 
+## v1.3.0 - 2026-11-01
+- New: **relate mail to models.** A message is linked to any number of Eloquent models (polymorphic `related_type` / `related_id`). Declare them on a Mailable (`HasMailLogRelations` trait + `RelatesToMailLog`, or `->relatedTo($order)`) or a Notification (`RelatesToMailLog`, `RelatesToModels`); the notifiable of a mail notification is linked automatically. Nothing is added to the message that is sent. A resend inherits the links; `mail-log:prune` removes them with the message. Config: `relations.*`.
+- New: **`MailLogsRelationManager`** ("Emails" tab for any resource) plus the `HasMailLogs` trait (`$model->mailLogs()`), a **Related record** filter in the mail log table and a "Related records" section on the message page.
+- New: **bounce / complaint alerts** (off by default, `alerts.*`): on a hard bounce, a complaint or a new suppressed address, a Filament database notification goes to the users a `receiveMailLogAlerts` gate lets in (or `BounceAlerts::recipientsUsing()`), and optionally a mail to `alerts.mail_to`. Throttled per address and per window, never alerts twice for a redelivered webhook or about its own alert mail.
+- **Needs one new migration** (`create_mail_log_relations_table`); publish and run it. Until then logging works as before and the relation UI is hidden. Database alerts need Laravel's `notifications` table.
+- `DeliveryRepository::suppress()` now returns whether the address was new.
+- English and Ukrainian translations.
+
 ## 1.2.0 - 2026-10-25
 - New: **delivery tracking through provider webhooks** (Postmark, Mailgun, Amazon SES via SNS, Resend, SendGrid): delivered, bounced (hard / soft), complained, opened, clicked, rejected and deferred events are stored in `mail_log_events`, the latest meaningful one is kept on the message as `delivery_status` (with a precedence that makes late and out-of-order webhooks harmless). Signature checks per provider (403 on a bad one, replay window, SNS certificate and topic checks, automatic SNS subscription confirmation), idempotent on the provider event id, processed in the request. Off until a provider is enabled with its secret. Add your own provider by implementing `Webhooks\Contracts\WebhookDriver`.
 - New: outgoing mail is stamped with `X-Metadata-mail_log_id` (a Symfony `MetadataHeader`) while a provider is on, so events can be matched without the transport message id; `webhooks.stamp_headers` adds more header names for SMTP relays.

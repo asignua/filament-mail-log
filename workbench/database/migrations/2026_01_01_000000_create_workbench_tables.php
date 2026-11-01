@@ -26,5 +26,24 @@ return new class extends Migration
                 $table->timestamps();
             });
         }
+
+        Schema::create('notifications', function (Blueprint $table): void {
+            $table->uuid('id')->primary();
+            $table->string('type');
+            $table->morphs('notifiable');
+            $table->text('data');
+            $table->timestamp('read_at')->nullable();
+            $table->timestamps();
+        });
+
+        Schema::create('orders', function (Blueprint $table): void {
+            $table->id();
+            $table->string('number')->unique();
+            $table->string('customer_name');
+            $table->string('customer_email');
+            $table->unsignedInteger('total_cents');
+            $table->string('status')->default('paid');
+            $table->timestamps();
+        });
     }
 };

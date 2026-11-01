@@ -119,13 +119,15 @@ class DeliveryRepository
 
     /**
      * Adds an address to the suppression list. An address that is already there keeps its first reason.
+     *
+     * @return bool whether the address is new on the list
      */
-    public function suppress(string $email, SuppressionReason $reason, ?string $provider, ?int $mailLogId, ?string $detail): void
+    public function suppress(string $email, SuppressionReason $reason, ?string $provider, ?int $mailLogId, ?string $detail): bool
     {
         $email = mb_strtolower(trim($email));
 
         if ($email === '' || $this->suppressions()->where('email', $email)->exists()) {
-            return;
+            return false;
         }
 
         try {
@@ -138,7 +140,10 @@ class DeliveryRepository
             $row->save();
         } catch (UniqueConstraintViolationException) {
             // Raced with another webhook for the same address.
+            return false;
         }
+
+        return true;
     }
 
     /**

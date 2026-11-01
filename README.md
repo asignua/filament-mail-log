@@ -36,6 +36,10 @@ Resend a stored message to the same or other recipients (separate permission, wi
 
 ![The Resend modal](https://raw.githubusercontent.com/asignua/filament-mail-log/v1.2.0/art/resend.jpg)
 
+Every record can show its own emails (an "Emails" tab on an Order, a User ...):
+
+![The Emails tab of an order](https://raw.githubusercontent.com/asignua/filament-mail-log/v1.3.0/art/relations.jpg)
+
 Dark mode:
 
 ![The mail log in dark mode](https://raw.githubusercontent.com/asignua/filament-mail-log/v1.2.0/art/list-dark.jpg)
@@ -193,6 +197,89 @@ original recipients.) If the lookup itself fails the mail is sent. Removing an a
 its own permission: `Gate::define('manageMailSuppressions', ...)` or `MailLogPlugin::make()->authorizeSuppressions(fn () => ...)`.
 `->suppressionResource(false)` hides the resource.
 
+### Emails of a record (relate mail to models)
+
+A message can be linked to any number of Eloquent models (an `Order`, the `User`, ...), and any record page can show
+**its** emails. Needs the `create_mail_log_relations_table` migration (publish and run it like the others; until then
+logging works as before and the UI is hidden). The links are polymorphic: `related_type` (the morph class) and `related_id`.
+
+1. On the model that gets the tab:
+
+```php
+use Asignua\FilamentMailLog\Concerns\HasMailLogs;
+
+class Order extends Model
+{
+    use HasMailLogs;   // $order->mailLogs()
+}
+```
+
+2. On the resource, the relation manager (read-only, same access rule as the log):
+
+```php
+use Asignua\FilamentMailLog\Filament\RelationManagers\MailLogsRelationManager;
+
+public static function getRelations(): array
+{
+    return [MailLogsRelationManager::class];
+}
+```
+
+3. Tell the log what a message is about, in one of three ways:
+
+```php
+// a Mailable: the trait wires it up, you return the models
+class OrderShipped extends Mailable implements RelatesToMailLog
+{
+    use HasMailLogRelations;
+
+    public function __construct(public Order $order) {}
+
+    public function mailLogRelations(): iterable
+    {
+        return [$this->order, $this->order->customer, ...$this->mailLogRelated];
+    }
+}
+
+Mail::to($user)->send((new OrderShipped($order))->relatedTo($invoice));   // or add models at the call site
+
+// a Notification: implement the interface (RelatesToModels gives you ->relatedTo() as well)
+class OrderPaid extends Notification implements RelatesToMailLog { use RelatesToModels; ... }
+
+// nothing at all: the notifiable of a mail notification is related automatically
+$user->notify(new OrderPaid);          // linked to $user
+```
+
+Only saved models are linked, each once, at most `relations.max` (20) per message; an on-demand route
+(`Notification::route('mail', ...)`) has no model and is skipped. A resend inherits the links of the original. The
+models are carried to the log in the mail's view data (the same way as Laravel's `__laravel_mailable`), so no header is
+added to the message and nothing reaches the recipient. The mail log table has a **Related record** filter (model type
+and/or record ID), and the message page lists the related records. Turn it all off with `relations.enabled`; stop
+linking notifiables with `relations.notifiable=false`.
+
+### Bounce and complaint alerts
+
+Off by default. When a webhook reports a **hard bounce**, a **complaint**, or a **new address on the suppression
+list**, people are told:
+
+```php
+// .env
+MAIL_LOG_ALERTS=true
+MAIL_LOG_ALERTS_MAIL=ops@example.com,boss@example.com   // optional plain mail
+
+// a gate decides who gets the Filament database notification (closed until you define it)
+Gate::define('receiveMailLogAlerts', fn (User $user): bool => $user->isAdmin());
+```
+
+The panel needs `->databaseNotifications()` to show the bell. Choose the triggers with `alerts.on`
+(`hard_bounce`, `complaint`, `suppression`); one provider event raises one alert even if it matches several. To pick the
+users yourself (a team, a role) call `BounceAlerts::recipientsUsing(fn () => $users)` from a service provider.
+
+Alerts are throttled: one per address per `per_address_minutes`, and at most `max` per `window_minutes` (uses the cache,
+so it needs a shared one in production); the alerts held back are counted in the next one. A redelivered webhook never
+alerts twice, and a bounce of the alert mail itself never alerts. A failure while alerting is logged and never fails
+the webhook.
+
 ### Mail preview for designers
 
 Register the messages and the page appears (same access rule as the log):
@@ -270,6 +357,7 @@ with `[redaction failed]`. Add the parameters of your own signed links to the li
   killed by its timeout. `mail-log:prune` fails such rows after `stale_after_minutes`.
 - **The recipient sees an `X-Mail-Log-Id` header** (and, while a webhook provider is on and the transport does not turn it into provider metadata, `X-Metadata-mail_log_id`). It is how `MessageSending` is tied to `MessageSent` (Symfony
   clones the message). It is a random ULID and carries nothing; rename it with the `header` config.
+- **The `mailLogs` relation and the pivot table.** `HasMailLogs::mailLogs()` is a `morphToMany` over `mail_log_relations`, which has no `id` or timestamps on purpose (a shared column would make the log table's sort and period filter ambiguous when it is joined). Do not add them.
 - **Stored mail is still personal data.** Redaction removes secrets, not names or order contents. Use
   `body.store=false` or a short `retention_days` where that matters.
 - **Mail sent inside a DB transaction keeps its log row.** With `connection` = null the log is written on a separate connection that clones the default one (`isolate_connection`), so a rollback does not erase the record of a mail that already left. In-memory SQLite stays on the default connection. Side effect: a host test wrapped in a transaction does not roll the log rows back.

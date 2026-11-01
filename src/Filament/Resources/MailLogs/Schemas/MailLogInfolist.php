@@ -11,6 +11,7 @@ use Asignua\FilamentMailLog\Models\MailLog;
 use Asignua\FilamentMailLog\Models\MailLogEvent;
 use Asignua\FilamentMailLog\Support\MailResender;
 use Asignua\FilamentMailLog\Support\MailTypes;
+use Asignua\FilamentMailLog\Support\RelatedLabel;
 use Asignua\FilamentMailLog\Support\TrackingSchema;
 use Filament\Infolists\Components\IconEntry;
 use Filament\Infolists\Components\KeyValueEntry;
@@ -97,6 +98,17 @@ class MailLogInfolist
                                     ]),
                             ])
                             ->visible(fn (MailLog $record): bool => TrackingSchema::hasEventsTable() && $record->events->isNotEmpty()),
+
+                        Section::make($t('sections.related'))
+                            ->description($t('sections.related_help'))
+                            ->schema([
+                                TextEntry::make('related_records')
+                                    ->hiddenLabel()
+                                    ->badge()
+                                    ->color('gray')
+                                    ->state(fn (MailLog $record): array => RelatedLabel::forLog($record)),
+                            ])
+                            ->visible(fn (MailLog $record): bool => TrackingSchema::hasRelationsTable() && $record->relatedLinks()->exists()),
 
                         Section::make($t('sections.attachments'))
                             ->schema([

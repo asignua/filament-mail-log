@@ -42,6 +42,9 @@ class MailLogPlugin implements Plugin
     /** The gate ability consulted for removing an address from the suppression list when no `authorizeSuppressions()` was given. */
     public const string SUPPRESSIONS_ABILITY = 'manageMailSuppressions';
 
+    /** The gate ability that decides who gets the bounce / complaint alerts (see the `alerts` config). */
+    public const string ALERTS_ABILITY = 'receiveMailLogAlerts';
+
     protected bool|Closure|null $authorizeResend = null;
 
     protected bool|Closure|null $authorizeSuppressions = null;

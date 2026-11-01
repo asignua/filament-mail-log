@@ -143,6 +143,10 @@ class MailLogRepository
                 app(DeliveryRepository::class)->deleteEventsOf($ids);
             }
 
+            if (TrackingSchema::hasRelationsTable()) {
+                app(MailLogRelationRepository::class)->deleteOf($ids);
+            }
+
             $deleted += $this->query()->whereIn('id', $ids)->delete();
         } while (count($ids) === self::PRUNE_CHUNK);
 

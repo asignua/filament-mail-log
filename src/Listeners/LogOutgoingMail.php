@@ -7,10 +7,13 @@ namespace Asignua\FilamentMailLog\Listeners;
 use Asignua\FilamentMailLog\Enums\MailStatus;
 use Asignua\FilamentMailLog\Mail\ResentMail;
 use Asignua\FilamentMailLog\Models\MailLog;
+use Asignua\FilamentMailLog\Repositories\MailLogRelationRepository;
 use Asignua\FilamentMailLog\Repositories\MailLogRepository;
 use Asignua\FilamentMailLog\Support\MailLogContext;
 use Asignua\FilamentMailLog\Support\MailRedactor;
+use Asignua\FilamentMailLog\Support\MailRelations;
 use Asignua\FilamentMailLog\Support\TrackingSchema;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Mail\Events\MessageSending;
 use Illuminate\Mail\Events\MessageSent;
 use Illuminate\Mail\Mailable;
@@ -82,6 +85,10 @@ final class LogOutgoingMail
             $log->recipients = ['to' => $row['to'], 'cc' => $row['cc'], 'bcc' => $row['bcc']];
             $this->linkResend($log, $event->job instanceof SendQueuedMailable && $event->job->mailable instanceof ResentMail ? $event->job->mailable->mailLogResentFrom : null);
             $log->save();
+
+            $this->relate($log, $event->job instanceof SendQueuedMailable && $event->job->mailable instanceof Mailable
+                ? MailRelations::forQueuedMailable($event->job->mailable)
+                : ($event->job instanceof SendQueuedNotifications ? MailRelations::forQueuedNotification($event->job) : []));
         } catch (Throwable $e) {
             $this->warn('queued', $e);
         }
@@ -143,6 +150,8 @@ final class LogOutgoingMail
             }
 
             $log->save();
+
+            $this->relate($log, MailRelations::forSending($data), $log->resent_from_id ?? null);
 
             $email->getHeaders()->addTextHeader($this->header(), $log->ulid);
             $this->stamp($email, $log->ulid);
@@ -257,6 +266,33 @@ final class LogOutgoingMail
             );
         } catch (Throwable $e) {
             $this->warn('terminate', $e);
+        }
+    }
+
+    /**
+     * Links the row to the models it is about. Its own try block: a failure here (the table is not migrated yet)
+     * must not lose the log row, nor the correlation header that is set after it.
+     *
+     * @param list<Model> $models
+     */
+    private function relate(MailLog $log, array $models, ?int $resentFrom = null): void
+    {
+        try {
+            if (!(bool) config('filament-mail-log.relations.enabled', true) || !TrackingSchema::hasRelationsTable()) {
+                return;
+            }
+
+            $repository = app(MailLogRelationRepository::class);
+
+            if ($models !== []) {
+                $repository->attach($log, $models);
+            }
+
+            if ($resentFrom !== null && $models === []) {
+                $repository->copy($resentFrom, $log);
+            }
+        } catch (Throwable $e) {
+            $this->warn('relations', $e);
         }
     }
 

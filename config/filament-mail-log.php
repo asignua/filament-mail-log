@@ -172,6 +172,69 @@ return [
         'table' => env('MAIL_LOG_SUPPRESSIONS_TABLE', 'mail_log_suppressions'),
     ],
 
+    /*
+     * Relate a message to the models it is about (an Order, a User ...), so a record page can show "its emails".
+     * Needs the `create_mail_log_relations_table` migration. A mailable uses the `HasMailLogRelations` trait
+     * (or `->relatedTo($order)`), a notification the `RelatesToMailLog` interface; the notifiable of a mail
+     * notification is related automatically.
+     */
+    'relations' => [
+        'enabled' => env('MAIL_LOG_RELATIONS', true),
+
+        'table' => env('MAIL_LOG_RELATIONS_TABLE', 'mail_log_relations'),
+
+        /*
+         * Relate a mail notification to its notifiable when that is an Eloquent model (not an on-demand route).
+         */
+        'notifiable' => true,
+
+        /*
+         * At most this many models are related to one message; the rest is ignored.
+         */
+        'max' => 20,
+    ],
+
+    /*
+     * Alerts when the provider reports a hard bounce, a complaint or a new suppressed address. Off by default.
+     * Needs a webhook provider (see `webhooks`). Each alert is a Filament database notification to the users the
+     * `gate` lets in, and/or a mail to the addresses in `mail_to`; both are throttled.
+     */
+    'alerts' => [
+        'enabled' => env('MAIL_LOG_ALERTS', false),
+
+        /*
+         * What raises an alert: `hard_bounce`, `complaint`, `suppression` (the address was NEW on the suppression
+         * list). One provider event raises one alert even when it matches several.
+         */
+        'on' => ['hard_bounce', 'complaint'],
+
+        /*
+         * Database notifications go to the users for whom this gate ability is allowed. Not defined = nobody.
+         * The panel needs `->databaseNotifications()` to show them.
+         */
+        'gate' => 'receiveMailLogAlerts',
+
+        'database' => true,
+
+        /*
+         * Comma separated addresses that get a plain mail. Empty = no mail. The alert mail is never alerted about.
+         */
+        'mail_to' => env('MAIL_LOG_ALERTS_MAIL'),
+
+        /*
+         * Upper bound of database recipients per alert.
+         */
+        'max_recipients' => 50,
+
+        'throttle' => [
+            // The same address raises one alert per this many minutes.
+            'per_address_minutes' => 60,
+            // At most `max` alerts per `window_minutes`; the rest is counted and reported by the next alert. Uses the cache.
+            'max' => 10,
+            'window_minutes' => 60,
+        ],
+    ],
+
     'body' => [
         /*
          * Store the html/text bodies at all. Turn off when the mail is too sensitive to keep, even redacted.

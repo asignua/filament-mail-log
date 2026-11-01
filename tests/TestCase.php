@@ -68,6 +68,7 @@ abstract class TestCase extends Orchestra
         $app['config']->set('auth.providers.users.model', User::class);
         $app['config']->set('mail.default', 'array');
         $app['config']->set('mail.mailers.array', ['transport' => 'array']);
+        $app['config']->set('cache.default', 'array');
         $app['config']->set('queue.connections.fake', ['driver' => 'database']);
     }
 
@@ -81,5 +82,6 @@ abstract class TestCase extends Orchestra
         (include __DIR__.'/../database/migrations/add_delivery_status_to_mail_logs_table.php.stub')->up();
         (include __DIR__.'/../database/migrations/create_mail_log_events_table.php.stub')->up();
         (include __DIR__.'/../database/migrations/create_mail_log_suppressions_table.php.stub')->up();
+        (include __DIR__.'/../database/migrations/create_mail_log_relations_table.php.stub')->up();
     }
 }

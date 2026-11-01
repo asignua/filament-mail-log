@@ -35,6 +35,11 @@ final class TrackingSchema
         return self::table((string) config('filament-mail-log.suppression.table', 'mail_log_suppressions'));
     }
 
+    public static function hasRelationsTable(): bool
+    {
+        return self::table((string) config('filament-mail-log.relations.table', 'mail_log_relations'));
+    }
+
     /**
      * Whether any provider is switched on (decides whether outgoing mail is stamped with the log id).
      */

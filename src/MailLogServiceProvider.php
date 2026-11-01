@@ -9,12 +9,15 @@ use Asignua\FilamentMailLog\Http\Controllers\WebhookController;
 use Asignua\FilamentMailLog\Listeners\DropSuppressedRecipients;
 use Asignua\FilamentMailLog\Listeners\LogOutgoingMail;
 use Asignua\FilamentMailLog\Repositories\DeliveryRepository;
+use Asignua\FilamentMailLog\Repositories\MailLogRelationRepository;
 use Asignua\FilamentMailLog\Repositories\MailLogRepository;
 use Asignua\FilamentMailLog\Support\MailLogContext;
+use Asignua\FilamentMailLog\Support\MailRelations;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Mail\Events\MessageSending;
 use Illuminate\Mail\Events\MessageSent;
+use Illuminate\Notifications\Events\NotificationSending;
 use Illuminate\Queue\Events\JobExceptionOccurred;
 use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Queue\Events\JobProcessed;
@@ -41,6 +44,7 @@ class MailLogServiceProvider extends PackageServiceProvider
                 'add_delivery_status_to_mail_logs_table',
                 'create_mail_log_events_table',
                 'create_mail_log_suppressions_table',
+                'create_mail_log_relations_table',
             ])
             ->hasCommand(PruneCommand::class);
     }
@@ -50,14 +54,18 @@ class MailLogServiceProvider extends PackageServiceProvider
         $this->app->singleton(MailLogRepository::class);
         $this->app->singleton(LogOutgoingMail::class);
         $this->app->singleton(DeliveryRepository::class);
+        $this->app->singleton(MailLogRelationRepository::class);
     }
 
     public function packageBooted(): void
     {
         // A fresh application (tests, Octane worker boot) starts with an empty registry.
         MailLogContext::reset();
+        MailRelations::reset();
 
         $this->callAfterResolving(Dispatcher::class, function (Dispatcher $events): void {
+            // Before the log row is written: it needs what the notification channel announced.
+            $events->listen(NotificationSending::class, static fn (NotificationSending $event) => MailRelations::rememberNotification($event));
             $events->listen(MessageSending::class, [LogOutgoingMail::class, 'sending']);
             // Order matters: the suppression listener needs the row and the correlation header of the first one.
             $events->listen(MessageSending::class, [DropSuppressedRecipients::class, 'handle']);

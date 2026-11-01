@@ -7,3 +7,8 @@ parameters:
         - src
     tmpDir: build/phpstan
     checkOctaneCompatibility: true
+    ignoreErrors:
+        # Traits for the host's own models / mailables: nothing inside the package uses them.
+        -
+            identifier: trait.unused
+            path: src/Concerns/*

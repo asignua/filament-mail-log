@@ -18,6 +18,7 @@ use Illuminate\Session\Middleware\AuthenticateSession;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
+use Workbench\App\Filament\Resources\Orders\OrderResource;
 
 class AdminPanelProvider extends PanelProvider
 {
@@ -39,6 +40,7 @@ class AdminPanelProvider extends PanelProvider
             ->path('admin')
             ->login()
             ->brandName('Acme Supply')
+            ->resources([OrderResource::class])
             ->plugin(MailLogPlugin::make())
             ->middleware([
                 EncryptCookies::class,

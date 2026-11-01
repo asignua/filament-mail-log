@@ -15,7 +15,7 @@ use Asignua\FilamentMailLog\Webhooks\DeliveryEvent;
  */
 final class DeliveryTracker
 {
-    public function __construct(private readonly DeliveryRepository $repository) {}
+    public function __construct(private readonly DeliveryRepository $repository, private readonly BounceAlerts $alerts) {}
 
     /**
      * @return bool whether the event was tied to a message of the log
@@ -23,15 +23,18 @@ final class DeliveryTracker
     public function record(DeliveryEvent $event): bool
     {
         $log = $this->repository->findLog($event);
+        $stored = false;
+        $newlySuppressed = false;
 
         if ($log !== null && $this->repository->storeEvent($log, $event)) {
+            $stored = true;
             $this->repository->advanceStatus($log, $event);
         }
 
         // The provider confirmed that the ADDRESS is dead, whether or not the message is in this log
         // (another application may share the provider account). Idempotent, so a redelivered event is harmless.
         if ($event->shouldSuppress() && $event->recipient !== null && (bool) config('filament-mail-log.suppression.record', true) && TrackingSchema::hasSuppressionsTable()) {
-            $this->repository->suppress(
+            $newlySuppressed = $this->repository->suppress(
                 $event->recipient,
                 $event->type === DeliveryEventType::Complained ? SuppressionReason::Complaint : SuppressionReason::HardBounce,
                 $event->provider,
@@ -39,6 +42,8 @@ final class DeliveryTracker
                 $event->detail,
             );
         }
+
+        $this->alerts->handle($event, $log, $stored, $newlySuppressed);
 
         return $log !== null;
     }

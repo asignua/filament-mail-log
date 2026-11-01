@@ -40,6 +40,10 @@ return [
         'detail' => 'Details',
     ],
     'filters' => [
+        'related' => 'Related record',
+        'related_type' => 'Model',
+        'related_id' => 'Record ID',
+        'any' => 'Any',
         'recipient' => 'Recipient contains',
         'body' => 'Text in the message',
         'from' => 'From',
@@ -52,6 +56,8 @@ return [
         'headers' => 'Headers',
     ],
     'sections' => [
+        'related' => 'Related records',
+        'related_help' => 'The records this message is about.',
         'error' => 'Error',
         'attachments' => 'Attachments',
         'delivery_events' => 'Delivery events',
@@ -123,6 +129,21 @@ return [
         'remove' => 'Remove',
         'remove_heading' => 'Remove from the suppression list',
         'remove_description' => 'The address will receive mail again, even though it bounced or complained.',
+    ],
+    'relations' => [
+        'tab' => 'Emails',
+        'heading' => 'Emails about this record',
+        'empty' => 'No emails are related to this record yet',
+    ],
+    'alerts' => [
+        'title_bounce' => 'Email to :address bounced',
+        'title_complaint' => 'Spam complaint from :address',
+        'line_subject' => 'Message: :subject',
+        'line_provider' => 'Reported by: :provider',
+        'line_detail' => 'Details: :detail',
+        'line_suppressed' => 'The address was added to the suppression list.',
+        'line_held' => ':count more alerts were held back by the throttle since the last one.',
+        'open' => 'Open the message',
     ],
     'preview' => [
         'navigation' => 'Mail preview',
