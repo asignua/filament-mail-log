@@ -10,7 +10,7 @@
                 "lead": "Every message logged, linked to your records, delivery tracked via webhooks, bounce alerts when it goes wrong.",
                 "chips": "Linked to records|Emails tab|Delivery webhooks|Bounce alerts",
                 "shot": "../../filament-mail-log/art/relations.jpg",
-                "crop": "690,90,1800,1710"
+                "crop": "690,135,2160,1350"
             }
         }
     ]
