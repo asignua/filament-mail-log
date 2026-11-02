@@ -397,7 +397,7 @@ with `[redaction failed]`. Add the parameters of your own signed links to the li
 
 ## Translations
 
-The interface ships in English and Ukrainian (other locales fall back to English) under the `filament-mail-log::filament-mail-log` namespace. A test keeps every language in step with the English keys. Override a
+The interface ships in 10 languages (de, en, es, fr, it, nl, pl, pt_BR, tr, uk; other locales fall back to English) under the `filament-mail-log::filament-mail-log` namespace. A test keeps every language in step with the English keys. Override a
 string by publishing the translations (`--tag=filament-mail-log-translations`) and editing the copy in
 `lang/vendor/filament-mail-log`.
 
