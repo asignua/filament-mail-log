@@ -172,7 +172,7 @@ class DemoSeeder extends Seeder
             $logs = MailLog::query()->where('subject', 'like', '%'.$number.'%')->get();
 
             foreach ($logs as $log) {
-                app(MailLogRelationRepository::class)->attach($log, [$order]);
+                app(MailLogRelationRepository::class)->attach($log, [[$order->getMorphClass(), $order->getKey()]]);
             }
         }
 
@@ -180,7 +180,7 @@ class DemoSeeder extends Seeder
         $invoice = MailLog::query()->where('subject', 'like', '%INV-2026-0412%')->first();
 
         if ($emma !== null && $invoice !== null) {
-            app(MailLogRelationRepository::class)->attach($invoice, [$emma]);
+            app(MailLogRelationRepository::class)->attach($invoice, [[$emma->getMorphClass(), $emma->getKey()]]);
         }
     }
 
