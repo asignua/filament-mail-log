@@ -2,6 +2,10 @@
 
 All notable changes to `asignua/filament-mail-log` are documented here.
 
+## v1.4.0 - 2026-11-10
+
+- Requires Filament ^5.11.2; replaced deprecated Filament API calls: `Filter::schema()` -> `Filter::form()` (4, mail log table filters).
+
 ## v1.3.0 - 2026-11-01
 - New: **relate mail to models.** A message is linked to any number of Eloquent models (polymorphic `related_type` / `related_id`). Declare them on a Mailable (`HasMailLogRelations` trait + `RelatesToMailLog`, or `->relatedTo($order)`) or a Notification (`RelatesToMailLog`, `RelatesToModels`); the notifiable of a mail notification is linked automatically. Nothing is added to the message that is sent. A resend inherits the links; `mail-log:prune` removes them with the message. Config: `relations.*`. `related_id` is typed like Laravel's `morphs()` (`relations.key_type`: `int` default, `uuid`, `ulid`, `string`) so `with('mailLogs')`, `withCount()` and `whereHas()` work on PostgreSQL; decide before migrating. `relatedTo()` keeps only `[morph class, key]` pairs (no model attributes in queue payloads).
 - New: **`MailLogsRelationManager`** ("Emails" tab for any resource) plus the `HasMailLogs` trait (`$model->mailLogs()`), a **Related record** filter in the mail log table and a "Related records" section on the message page. The row "View" action opens the message page.

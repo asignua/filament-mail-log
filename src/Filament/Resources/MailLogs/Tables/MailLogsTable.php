@@ -103,7 +103,7 @@ class MailLogsTable
                     ->options(fn (): array => self::typeOptions()),
 
                 Filter::make('recipient')
-                    ->schema([TextInput::make('recipient')->label($t('filters.recipient'))])
+                    ->form([TextInput::make('recipient')->label($t('filters.recipient'))])
                     ->query(fn (Builder $query, array $data): Builder => $query->when(
                         is_string($data['recipient'] ?? null) && $data['recipient'] !== '',
                         fn (Builder $q): Builder => $q->where(
@@ -114,7 +114,7 @@ class MailLogsTable
                 // Which record the message is about (see the `relations` config). Hidden until the table is migrated.
                 Filter::make('related')
                     ->label($t('filters.related'))
-                    ->schema([
+                    ->form([
                         Select::make('related_type')
                             ->label($t('filters.related_type'))
                             ->options(fn (): array => RelatedLabel::typeOptions())
@@ -129,7 +129,7 @@ class MailLogsTable
                 // The body is a longText: searching it is a separate, explicit filter, never part of the
                 // global search where every keystroke would scan the heaviest column.
                 Filter::make('body')
-                    ->schema([TextInput::make('body')->label($t('filters.body'))])
+                    ->form([TextInput::make('body')->label($t('filters.body'))])
                     ->query(fn (Builder $query, array $data): Builder => $query->when(
                         is_string($data['body'] ?? null) && $data['body'] !== '',
                         fn (Builder $q): Builder => $q->where(
@@ -140,7 +140,7 @@ class MailLogsTable
                 // A range on created_at, not whereDate(): keeps the index usable, and the day borders are the
                 // panel's timezone converted to the database one, like the dates shown in the table.
                 Filter::make('period')
-                    ->schema([
+                    ->form([
                         DatePicker::make('from')->label($t('filters.from')),
                         DatePicker::make('until')->label($t('filters.until')),
                     ])
