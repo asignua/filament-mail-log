@@ -1,10 +1,13 @@
 # Filament Mail Log
 
 [![Stand With Ukraine](https://raw.githubusercontent.com/vshymanskyy/StandWithUkraine/main/badges/StandWithUkraine.svg)](https://stand-with-ukraine.pp.ua)
+[![Latest Version on Packagist](https://img.shields.io/packagist/v/asignua/filament-mail-log.svg?style=flat-square)](https://packagist.org/packages/asignua/filament-mail-log)
+[![Tests](https://img.shields.io/github/actions/workflow/status/asignua/filament-mail-log/tests.yml?branch=main&label=tests&style=flat-square)](https://github.com/asignua/filament-mail-log/actions/workflows/tests.yml)
+[![Total Downloads](https://img.shields.io/packagist/dt/asignua/filament-mail-log.svg?style=flat-square)](https://packagist.org/packages/asignua/filament-mail-log)
+[![License](https://img.shields.io/packagist/l/asignua/filament-mail-log.svg?style=flat-square)](https://github.com/asignua/filament-mail-log/blob/main/LICENSE.md)
+[![Plumb score](https://plumbphp.dev/badges/asignua/filament-mail-log/composite.svg)](https://plumbphp.dev/asignua/filament-mail-log)
 
 <img class="filament-hidden" src="https://raw.githubusercontent.com/asignua/filament-mail-log/v1.2.0/art/cover.jpg" alt="Filament Mail Log">
-
-[![Tests](https://img.shields.io/github/actions/workflow/status/asignua/filament-mail-log/tests.yml?branch=main&label=tests)](https://github.com/asignua/filament-mail-log/actions/workflows/tests.yml)
 
 A log of every message your Laravel application sends, inside a Filament 5 panel. It answers "did the
 customer get the email, and what did it say?" without a third-party service: each message is followed from the
@@ -427,6 +430,8 @@ See [CHANGELOG.md](CHANGELOG.md).
 - [Themes](https://filamentphp.com/plugins/asign-themes) — per-user and per-panel colour themes
 
 All plugins: <https://filamentphp.com/plugins?q=asign>
+
+Catalogue of free and commercial plugins: <https://asign.tech/en/plugins>
 
 ## License
 
